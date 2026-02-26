@@ -34,6 +34,7 @@ This template enables the new OpenTelemetry-based VM Insights experience across 
 | Data Collection Rule | `Microsoft.Insights/dataCollectionRules` | Once per RG | Configures OTel performance counter collection |
 | Prometheus Alert Rule | `Microsoft.AlertsManagement/prometheusRuleGroups` | Once per RG | Fires when CPU exceeds threshold for 3+ min |
 | Prometheus Alert Rule | `Microsoft.AlertsManagement/prometheusRuleGroups` | Once per RG | Fires when memory exceeds threshold for 5+ min |
+| Prometheus Alert Rule | `Microsoft.AlertsManagement/prometheusRuleGroups` | Once per RG | Fires when disk exceeds threshold for 5+ min |
 | Azure Monitor Agent | `Microsoft.HybridCompute/machines/extensions` | Per server | Collects telemetry from each Arc server |
 | DCR Association | `Microsoft.Insights/dataCollectionRuleAssociations` | Per server | Links DCR to each Arc server |
 
@@ -136,6 +137,10 @@ az deployment group create \
 | `memoryAlertThreshold` | string | `'0.90'` | Memory threshold (0–1 ratio, e.g. 0.90 = 90%) |
 | `memoryAlertDuration` | string | `'PT5M'` | Duration memory must exceed threshold before firing |
 | `memoryAlertSeverity` | int | `2` | Memory alert severity (0=Critical … 4=Verbose) |
+| `enableDiskAlert` | bool | `true` | Enable Prometheus disk utilization alert rule |
+| `diskAlertThreshold` | string | `'0.90'` | Disk threshold (0–1 ratio, e.g. 0.90 = 90%) |
+| `diskAlertDuration` | string | `'PT5M'` | Duration disk must exceed threshold before firing |
+| `diskAlertSeverity` | int | `1` | Disk alert severity (0=Critical … 4=Verbose) |
 | `tags` | object | `{}` | Tags applied to all resources |
 
 ## Deployment behavior
@@ -152,6 +157,7 @@ When `enableAdditionalMetrics = true`, the template deploys two Prometheus alert
 |-------|--------|--------------------|------------------|----------|
 | **HighCpuUtilization** | `system_cpu_utilization` | 70% | 3 minutes | Warning (2) |
 | **HighMemoryUtilization** | `system_memory_utilization` | 90% | 5 minutes | Warning (2) |
+| **HighDiskUtilization** | `system_filesystem_utilization` | 90% | 5 minutes | Error (1) |
 
 Both alerts:
 - Evaluate **per host** (`host_name` label) so you know which server is affected

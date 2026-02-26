@@ -61,6 +61,20 @@ param memoryAlertDuration string = 'PT5M'
 @maxValue(4)
 param memoryAlertSeverity int = 2
 
+@description('Enable disk utilization alert rule (requires enableAdditionalMetrics = true).')
+param enableDiskAlert bool = true
+
+@description('Disk utilization threshold (0-1). Default 0.90 = 90%.')
+param diskAlertThreshold string = '0.90'
+
+@description('Duration disk must exceed threshold before alerting (ISO 8601). Default PT5M = 5 minutes.')
+param diskAlertDuration string = 'PT5M'
+
+@description('Disk alert severity (0 = Critical, 1 = Error, 2 = Warning, 3 = Informational, 4 = Verbose).')
+@minValue(0)
+@maxValue(4)
+param diskAlertSeverity int = 1
+
 // ---- Variables ----
 
 var defaultCounterSpecifiers = [
@@ -257,6 +271,43 @@ resource memoryAlertRuleGroup 'Microsoft.AlertsManagement/prometheusRuleGroups@2
         resolveConfiguration: {
           autoResolved: true
           timeToResolve: 'PT5M'
+        }
+      }
+    ]
+  }
+}
+
+// ---- Prometheus Alert Rule (Disk Utilization) ----
+
+resource diskAlertRuleGroup 'Microsoft.AlertsManagement/prometheusRuleGroups@2023-03-01' = if (enableDiskAlert && enableAdditionalMetrics) {
+  name: 'Disk-High-Utilization-${resourceGroup().name}'
+  location: location
+  tags: tags
+  properties: {
+    description: 'Alert when logical disk utilization exceeds ${diskAlertThreshold} for ${diskAlertDuration}'
+    enabled: true
+    interval: 'PT1M'
+    scopes: [
+      azureMonitorWorkspace.id
+    ]
+    rules: [
+      {
+        alert: 'HighDiskUtilization'
+        expression: 'max by (host_name, mountpoint) (avg_over_time(system_filesystem_utilization[5m])) > ${diskAlertThreshold}'
+        for: diskAlertDuration
+        severity: diskAlertSeverity
+        enabled: true
+        annotations: {
+          summary: 'High disk utilization detected'
+          description: 'Disk utilization on {{ $labels.host_name }} mount {{ $labels.mountpoint }} has been above ${diskAlertThreshold} for more than ${diskAlertDuration}'
+        }
+        labels: {
+          source: 'vminsights-otel'
+          resourceGroup: resourceGroup().name
+        }
+        resolveConfiguration: {
+          autoResolved: true
+          timeToResolve: 'PT10M'
         }
       }
     ]

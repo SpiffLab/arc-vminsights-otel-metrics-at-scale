@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.40.2.10011",
-      "templateHash": "7510938030908568128"
+      "templateHash": "13095047128728100730"
     }
   },
   "parameters": {
@@ -122,6 +122,36 @@
       "maxValue": 4,
       "metadata": {
         "description": "Memory alert severity (0 = Critical, 1 = Error, 2 = Warning, 3 = Informational, 4 = Verbose)."
+      }
+    },
+    "enableDiskAlert": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Enable disk utilization alert rule (requires enableAdditionalMetrics = true)."
+      }
+    },
+    "diskAlertThreshold": {
+      "type": "string",
+      "defaultValue": "0.90",
+      "metadata": {
+        "description": "Disk utilization threshold (0-1). Default 0.90 = 90%."
+      }
+    },
+    "diskAlertDuration": {
+      "type": "string",
+      "defaultValue": "PT5M",
+      "metadata": {
+        "description": "Duration disk must exceed threshold before alerting (ISO 8601). Default PT5M = 5 minutes."
+      }
+    },
+    "diskAlertSeverity": {
+      "type": "int",
+      "defaultValue": 1,
+      "minValue": 0,
+      "maxValue": 4,
+      "metadata": {
+        "description": "Disk alert severity (0 = Critical, 1 = Error, 2 = Warning, 3 = Informational, 4 = Verbose)."
       }
     }
   },
@@ -331,6 +361,46 @@
             "resolveConfiguration": {
               "autoResolved": true,
               "timeToResolve": "PT5M"
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "azureMonitorWorkspace"
+      ]
+    },
+    "diskAlertRuleGroup": {
+      "condition": "[and(parameters('enableDiskAlert'), parameters('enableAdditionalMetrics'))]",
+      "type": "Microsoft.AlertsManagement/prometheusRuleGroups",
+      "apiVersion": "2023-03-01",
+      "name": "[format('Disk-High-Utilization-{0}', resourceGroup().name)]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "properties": {
+        "description": "[format('Alert when logical disk utilization exceeds {0} for {1}', parameters('diskAlertThreshold'), parameters('diskAlertDuration'))]",
+        "enabled": true,
+        "interval": "PT1M",
+        "scopes": [
+          "[resourceId('Microsoft.Monitor/accounts', parameters('azureMonitorWorkspaceName'))]"
+        ],
+        "rules": [
+          {
+            "alert": "HighDiskUtilization",
+            "expression": "[format('max by (host_name, mountpoint) (avg_over_time(system_filesystem_utilization[5m])) > {0}', parameters('diskAlertThreshold'))]",
+            "for": "[parameters('diskAlertDuration')]",
+            "severity": "[parameters('diskAlertSeverity')]",
+            "enabled": true,
+            "annotations": {
+              "summary": "High disk utilization detected",
+              "description": "[format('Disk utilization on {{{{ $labels.host_name }}}} mount {{{{ $labels.mountpoint }}}} has been above {0} for more than {1}', parameters('diskAlertThreshold'), parameters('diskAlertDuration'))]"
+            },
+            "labels": {
+              "source": "vminsights-otel",
+              "resourceGroup": "[resourceGroup().name]"
+            },
+            "resolveConfiguration": {
+              "autoResolved": true,
+              "timeToResolve": "PT10M"
             }
           }
         ]

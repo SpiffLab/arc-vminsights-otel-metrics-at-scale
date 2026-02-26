@@ -20,6 +20,10 @@ param enableMemoryAlert = true
 param memoryAlertThreshold = '0.90'
 param memoryAlertSeverity = 2
 
+param enableDiskAlert = true
+param diskAlertThreshold = '0.90'
+param diskAlertSeverity = 1
+
 param tags = {
   environment: 'production'
   managedBy: 'bicep'
