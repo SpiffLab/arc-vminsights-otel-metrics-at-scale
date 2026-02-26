@@ -72,6 +72,26 @@ See the full list in [Microsoft's documentation](https://learn.microsoft.com/en-
 
 ## Quick start
 
+### Option 1: Deploy directly from GitHub (no clone needed)
+
+Run this in **Azure CloudShell (Bash)** to auto-discover all Windows Arc servers in a resource group and deploy:
+
+```bash
+rg="<your-resource-group>"
+
+servers=$(az resource list \
+  --resource-group $rg \
+  --resource-type "Microsoft.HybridCompute/machines" \
+  --query "[?properties.osType=='windows'].name" -o json)
+
+az deployment group create \
+  --resource-group $rg \
+  --template-uri "https://raw.githubusercontent.com/SpiffLab/arc-vminsights-otel-metrics-at-scale/master/main.json" \
+  --parameters arcServerNames="$servers"
+```
+
+### Option 2: Clone and customize
+
 1. **Clone the repo**
    ```bash
    git clone https://github.com/SpiffLab/arc-vminsights-otel-metrics-at-scale.git
