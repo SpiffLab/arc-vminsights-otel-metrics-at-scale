@@ -1,8 +1,9 @@
 // =============================================================================
 // VM Insights with OpenTelemetry for Azure Arc-enabled Windows Servers
 // =============================================================================
-// Deploys: Azure Monitor Workspace, Data Collection Rule (OTel), AMA extension,
-//          and DCR association for Arc-enabled Windows servers in a resource group.
+// Deploys: Azure Monitor Workspace, OTel Data Collection Rule, AMA extension,
+//          DCR association, and Prometheus alert rules for Arc-enabled Windows
+//          servers in a resource group.
 // =============================================================================
 
 targetScope = 'resourceGroup'
@@ -30,36 +31,29 @@ param samplingFrequencyInSeconds int = 60
 @description('Tags to apply to all resources.')
 param tags object = {}
 
-@description('Enable additional per-process and extended metrics (incurs extra cost).')
-param enableAdditionalMetrics bool = false
+// ---- Alert Parameters ----
 
-@description('Enable classic performance counter DCR for Log Analytics-based metric alerts.')
-param enableClassicMetrics bool = false
-
-@description('Name of the Log Analytics workspace for classic performance counters.')
-param logAnalyticsWorkspaceName string = 'law-vminsights-${resourceGroup().name}'
-
-@description('Enable CPU utilization alert rule (requires enableAdditionalMetrics = true).')
+@description('Enable CPU utilization alert rule.')
 param enableCpuAlert bool = true
 
 @description('CPU utilization threshold (0-1). Default 0.70 = 70%.')
 param cpuAlertThreshold string = '0.70'
 
-@description('Duration the CPU must exceed threshold before alerting (ISO 8601). Default PT3M = 3 minutes.')
+@description('Duration the CPU must exceed threshold before alerting (ISO 8601).')
 param cpuAlertDuration string = 'PT3M'
 
-@description('Alert severity (0 = Critical, 1 = Error, 2 = Warning, 3 = Informational, 4 = Verbose).')
+@description('CPU alert severity (0 = Critical, 1 = Error, 2 = Warning, 3 = Informational, 4 = Verbose).')
 @minValue(0)
 @maxValue(4)
 param cpuAlertSeverity int = 2
 
-@description('Enable memory utilization alert rule (requires enableAdditionalMetrics = true).')
+@description('Enable memory utilization alert rule.')
 param enableMemoryAlert bool = true
 
 @description('Memory utilization threshold (0-1). Default 0.90 = 90%.')
 param memoryAlertThreshold string = '0.90'
 
-@description('Duration memory must exceed threshold before alerting (ISO 8601). Default PT5M = 5 minutes.')
+@description('Duration memory must exceed threshold before alerting (ISO 8601).')
 param memoryAlertDuration string = 'PT5M'
 
 @description('Memory alert severity (0 = Critical, 1 = Error, 2 = Warning, 3 = Informational, 4 = Verbose).')
@@ -67,13 +61,13 @@ param memoryAlertDuration string = 'PT5M'
 @maxValue(4)
 param memoryAlertSeverity int = 2
 
-@description('Enable disk utilization alert rule (requires enableAdditionalMetrics = true).')
+@description('Enable disk utilization alert rule.')
 param enableDiskAlert bool = true
 
 @description('Disk utilization threshold (0-1). Default 0.90 = 90%.')
 param diskAlertThreshold string = '0.90'
 
-@description('Duration disk must exceed threshold before alerting (ISO 8601). Default PT5M = 5 minutes.')
+@description('Duration disk must exceed threshold before alerting (ISO 8601).')
 param diskAlertDuration string = 'PT5M'
 
 @description('Disk alert severity (0 = Critical, 1 = Error, 2 = Warning, 3 = Informational, 4 = Verbose).')
@@ -83,7 +77,9 @@ param diskAlertSeverity int = 1
 
 // ---- Variables ----
 
-var defaultCounterSpecifiers = [
+// Default + alert metrics are always collected so alerts work out of the box
+var counterSpecifiers = [
+  // Default metrics (free)
   'system.uptime'
   'system.cpu.time'
   'system.memory.usage'
@@ -94,33 +90,11 @@ var defaultCounterSpecifiers = [
   'system.disk.operations'
   'system.disk.operation_time'
   'system.filesystem.usage'
-]
-
-var additionalCounterSpecifiers = [
+  // Required for alert rules
   'system.cpu.utilization'
-  'system.cpu.logical.count'
   'system.memory.utilization'
-  'system.memory.limit'
   'system.filesystem.utilization'
-  'system.disk.io_time'
-  'system.disk.pending_operations'
-  'system.network.packets'
-  'system.network.connections'
-  'process.uptime'
-  'process.cpu.time'
-  'process.cpu.utilization'
-  'process.memory.usage'
-  'process.memory.virtual'
-  'process.memory.utilization'
-  'process.disk.io'
-  'process.disk.operations'
-  'process.threads'
-  'process.handles'
 ]
-
-var counterSpecifiers = enableAdditionalMetrics
-  ? concat(defaultCounterSpecifiers, additionalCounterSpecifiers)
-  : defaultCounterSpecifiers
 
 // ---- Azure Monitor Workspace ----
 
@@ -137,7 +111,7 @@ resource dataCollectionRule 'Microsoft.Insights/dataCollectionRules@2024-03-11' 
   location: location
   tags: tags
   properties: {
-    description: 'DCR for VM Insights OpenTelemetry metrics on Arc-enabled Windows server'
+    description: 'DCR for VM Insights OpenTelemetry metrics on Arc-enabled Windows servers'
     dataSources: {
       performanceCountersOTel: [
         {
@@ -165,88 +139,6 @@ resource dataCollectionRule 'Microsoft.Insights/dataCollectionRules@2024-03-11' 
         ]
         destinations: [
           'MonitoringAccountDestination'
-        ]
-      }
-    ]
-  }
-}
-
-// ---- Log Analytics Workspace (for classic metric alerts) ----
-
-resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' = if (enableClassicMetrics) {
-  name: logAnalyticsWorkspaceName
-  location: location
-  tags: tags
-  properties: {
-    sku: {
-      name: 'PerGB2018'
-    }
-    retentionInDays: 30
-  }
-}
-
-// ---- Data Collection Rule (Classic Performance Counters) ----
-
-resource classicDataCollectionRule 'Microsoft.Insights/dataCollectionRules@2024-03-11' = if (enableClassicMetrics) {
-  name: 'MSVMI-perf-${resourceGroup().name}'
-  location: location
-  tags: tags
-  properties: {
-    description: 'DCR for Windows performance counters sent to Log Analytics and Azure Monitor Metrics'
-    dataSources: {
-      performanceCounters: [
-        {
-          name: 'WindowsPerfCounters'
-          streams: [
-            'Microsoft-Perf'
-            'Microsoft-InsightsMetrics'
-          ]
-          samplingFrequencyInSeconds: samplingFrequencyInSeconds
-          counterSpecifiers: [
-            '\\Processor(_Total)\\% Processor Time'
-            '\\Memory\\% Committed Bytes In Use'
-            '\\Memory\\Available MBytes'
-            '\\LogicalDisk(_Total)\\% Free Space'
-            '\\LogicalDisk(_Total)\\Free Megabytes'
-            '\\LogicalDisk(_Total)\\Disk Reads/sec'
-            '\\LogicalDisk(_Total)\\Disk Writes/sec'
-            '\\LogicalDisk(_Total)\\Disk Transfers/sec'
-            '\\Network Interface(*)\\Bytes Total/sec'
-            '\\Network Interface(*)\\Bytes Sent/sec'
-            '\\Network Interface(*)\\Bytes Received/sec'
-            '\\System\\Processor Queue Length'
-            '\\Process(_Total)\\Thread Count'
-            '\\Process(_Total)\\Handle Count'
-          ]
-        }
-      ]
-    }
-    destinations: {
-      logAnalytics: [
-        {
-          workspaceResourceId: enableClassicMetrics ? logAnalyticsWorkspace.id : ''
-          name: 'LogAnalyticsDestination'
-        }
-      ]
-      azureMonitorMetrics: {
-        name: 'AzureMonitorMetricsDestination'
-      }
-    }
-    dataFlows: [
-      {
-        streams: [
-          'Microsoft-Perf'
-        ]
-        destinations: [
-          'LogAnalyticsDestination'
-        ]
-      }
-      {
-        streams: [
-          'Microsoft-InsightsMetrics'
-        ]
-        destinations: [
-          'AzureMonitorMetricsDestination'
         ]
       }
     ]
@@ -291,23 +183,9 @@ resource dcrAssociations 'Microsoft.Insights/dataCollectionRuleAssociations@2024
   }
 ]
 
-resource classicDcrAssociations 'Microsoft.Insights/dataCollectionRuleAssociations@2024-03-11' = [
-  for (name, i) in arcServerNames: if (enableClassicMetrics) {
-    name: 'VMInsightsPerfAssociation'
-    scope: arcServers[i]
-    properties: {
-      dataCollectionRuleId: classicDataCollectionRule.id
-      description: 'Association of classic perf counter DCR with Arc-enabled server ${name}'
-    }
-    dependsOn: [
-      amaExtensions[i]
-    ]
-  }
-]
-
 // ---- Prometheus Alert Rule (CPU Utilization) ----
 
-resource cpuAlertRuleGroup 'Microsoft.AlertsManagement/prometheusRuleGroups@2023-03-01' = if (enableCpuAlert && enableAdditionalMetrics) {
+resource cpuAlertRuleGroup 'Microsoft.AlertsManagement/prometheusRuleGroups@2023-03-01' = if (enableCpuAlert) {
   name: 'CPU-High-Utilization-${resourceGroup().name}'
   location: location
   tags: tags
@@ -344,7 +222,7 @@ resource cpuAlertRuleGroup 'Microsoft.AlertsManagement/prometheusRuleGroups@2023
 
 // ---- Prometheus Alert Rule (Memory Utilization) ----
 
-resource memoryAlertRuleGroup 'Microsoft.AlertsManagement/prometheusRuleGroups@2023-03-01' = if (enableMemoryAlert && enableAdditionalMetrics) {
+resource memoryAlertRuleGroup 'Microsoft.AlertsManagement/prometheusRuleGroups@2023-03-01' = if (enableMemoryAlert) {
   name: 'Memory-High-Utilization-${resourceGroup().name}'
   location: location
   tags: tags
@@ -381,7 +259,7 @@ resource memoryAlertRuleGroup 'Microsoft.AlertsManagement/prometheusRuleGroups@2
 
 // ---- Prometheus Alert Rule (Disk Utilization) ----
 
-resource diskAlertRuleGroup 'Microsoft.AlertsManagement/prometheusRuleGroups@2023-03-01' = if (enableDiskAlert && enableAdditionalMetrics) {
+resource diskAlertRuleGroup 'Microsoft.AlertsManagement/prometheusRuleGroups@2023-03-01' = if (enableDiskAlert) {
   name: 'Disk-High-Utilization-${resourceGroup().name}'
   location: location
   tags: tags
@@ -421,14 +299,8 @@ resource diskAlertRuleGroup 'Microsoft.AlertsManagement/prometheusRuleGroups@202
 @description('Resource ID of the Azure Monitor Workspace.')
 output azureMonitorWorkspaceId string = azureMonitorWorkspace.id
 
-@description('Resource ID of the OTel Data Collection Rule.')
+@description('Resource ID of the Data Collection Rule.')
 output dataCollectionRuleId string = dataCollectionRule.id
-
-@description('Resource ID of the Log Analytics workspace (if enabled).')
-output logAnalyticsWorkspaceId string = enableClassicMetrics ? logAnalyticsWorkspace.id : ''
-
-@description('Resource ID of the classic perf counter DCR (if enabled).')
-output classicDataCollectionRuleId string = enableClassicMetrics ? classicDataCollectionRule.id : ''
 
 @description('Names of Arc servers configured.')
 output configuredServers array = arcServerNames

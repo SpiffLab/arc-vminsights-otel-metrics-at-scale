@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.40.2.10011",
-      "templateHash": "6355625211631283311"
+      "templateHash": "14401412023907075567"
     }
   },
   "parameters": {
@@ -57,32 +57,11 @@
         "description": "Tags to apply to all resources."
       }
     },
-    "enableAdditionalMetrics": {
-      "type": "bool",
-      "defaultValue": false,
-      "metadata": {
-        "description": "Enable additional per-process and extended metrics (incurs extra cost)."
-      }
-    },
-    "enableClassicMetrics": {
-      "type": "bool",
-      "defaultValue": false,
-      "metadata": {
-        "description": "Enable classic performance counter DCR for Log Analytics-based metric alerts."
-      }
-    },
-    "logAnalyticsWorkspaceName": {
-      "type": "string",
-      "defaultValue": "[format('law-vminsights-{0}', resourceGroup().name)]",
-      "metadata": {
-        "description": "Name of the Log Analytics workspace for classic performance counters."
-      }
-    },
     "enableCpuAlert": {
       "type": "bool",
       "defaultValue": true,
       "metadata": {
-        "description": "Enable CPU utilization alert rule (requires enableAdditionalMetrics = true)."
+        "description": "Enable CPU utilization alert rule."
       }
     },
     "cpuAlertThreshold": {
@@ -96,7 +75,7 @@
       "type": "string",
       "defaultValue": "PT3M",
       "metadata": {
-        "description": "Duration the CPU must exceed threshold before alerting (ISO 8601). Default PT3M = 3 minutes."
+        "description": "Duration the CPU must exceed threshold before alerting (ISO 8601)."
       }
     },
     "cpuAlertSeverity": {
@@ -105,14 +84,14 @@
       "minValue": 0,
       "maxValue": 4,
       "metadata": {
-        "description": "Alert severity (0 = Critical, 1 = Error, 2 = Warning, 3 = Informational, 4 = Verbose)."
+        "description": "CPU alert severity (0 = Critical, 1 = Error, 2 = Warning, 3 = Informational, 4 = Verbose)."
       }
     },
     "enableMemoryAlert": {
       "type": "bool",
       "defaultValue": true,
       "metadata": {
-        "description": "Enable memory utilization alert rule (requires enableAdditionalMetrics = true)."
+        "description": "Enable memory utilization alert rule."
       }
     },
     "memoryAlertThreshold": {
@@ -126,7 +105,7 @@
       "type": "string",
       "defaultValue": "PT5M",
       "metadata": {
-        "description": "Duration memory must exceed threshold before alerting (ISO 8601). Default PT5M = 5 minutes."
+        "description": "Duration memory must exceed threshold before alerting (ISO 8601)."
       }
     },
     "memoryAlertSeverity": {
@@ -142,7 +121,7 @@
       "type": "bool",
       "defaultValue": true,
       "metadata": {
-        "description": "Enable disk utilization alert rule (requires enableAdditionalMetrics = true)."
+        "description": "Enable disk utilization alert rule."
       }
     },
     "diskAlertThreshold": {
@@ -156,7 +135,7 @@
       "type": "string",
       "defaultValue": "PT5M",
       "metadata": {
-        "description": "Duration disk must exceed threshold before alerting (ISO 8601). Default PT5M = 5 minutes."
+        "description": "Duration disk must exceed threshold before alerting (ISO 8601)."
       }
     },
     "diskAlertSeverity": {
@@ -170,7 +149,7 @@
     }
   },
   "variables": {
-    "defaultCounterSpecifiers": [
+    "counterSpecifiers": [
       "system.uptime",
       "system.cpu.time",
       "system.memory.usage",
@@ -180,30 +159,11 @@
       "system.disk.io",
       "system.disk.operations",
       "system.disk.operation_time",
-      "system.filesystem.usage"
-    ],
-    "additionalCounterSpecifiers": [
+      "system.filesystem.usage",
       "system.cpu.utilization",
-      "system.cpu.logical.count",
       "system.memory.utilization",
-      "system.memory.limit",
-      "system.filesystem.utilization",
-      "system.disk.io_time",
-      "system.disk.pending_operations",
-      "system.network.packets",
-      "system.network.connections",
-      "process.uptime",
-      "process.cpu.time",
-      "process.cpu.utilization",
-      "process.memory.usage",
-      "process.memory.virtual",
-      "process.memory.utilization",
-      "process.disk.io",
-      "process.disk.operations",
-      "process.threads",
-      "process.handles"
-    ],
-    "counterSpecifiers": "[if(parameters('enableAdditionalMetrics'), concat(variables('defaultCounterSpecifiers'), variables('additionalCounterSpecifiers')), variables('defaultCounterSpecifiers'))]"
+      "system.filesystem.utilization"
+    ]
   },
   "resources": {
     "azureMonitorWorkspace": {
@@ -220,7 +180,7 @@
       "location": "[parameters('location')]",
       "tags": "[parameters('tags')]",
       "properties": {
-        "description": "DCR for VM Insights OpenTelemetry metrics on Arc-enabled Windows server",
+        "description": "DCR for VM Insights OpenTelemetry metrics on Arc-enabled Windows servers",
         "dataSources": {
           "performanceCountersOTel": [
             {
@@ -254,91 +214,6 @@
       },
       "dependsOn": [
         "azureMonitorWorkspace"
-      ]
-    },
-    "logAnalyticsWorkspace": {
-      "condition": "[parameters('enableClassicMetrics')]",
-      "type": "Microsoft.OperationalInsights/workspaces",
-      "apiVersion": "2023-09-01",
-      "name": "[parameters('logAnalyticsWorkspaceName')]",
-      "location": "[parameters('location')]",
-      "tags": "[parameters('tags')]",
-      "properties": {
-        "sku": {
-          "name": "PerGB2018"
-        },
-        "retentionInDays": 30
-      }
-    },
-    "classicDataCollectionRule": {
-      "condition": "[parameters('enableClassicMetrics')]",
-      "type": "Microsoft.Insights/dataCollectionRules",
-      "apiVersion": "2024-03-11",
-      "name": "[format('MSVMI-perf-{0}', resourceGroup().name)]",
-      "location": "[parameters('location')]",
-      "tags": "[parameters('tags')]",
-      "properties": {
-        "description": "DCR for Windows performance counters sent to Log Analytics and Azure Monitor Metrics",
-        "dataSources": {
-          "performanceCounters": [
-            {
-              "name": "WindowsPerfCounters",
-              "streams": [
-                "Microsoft-Perf",
-                "Microsoft-InsightsMetrics"
-              ],
-              "samplingFrequencyInSeconds": "[parameters('samplingFrequencyInSeconds')]",
-              "counterSpecifiers": [
-                "\\Processor(_Total)\\% Processor Time",
-                "\\Memory\\% Committed Bytes In Use",
-                "\\Memory\\Available MBytes",
-                "\\LogicalDisk(_Total)\\% Free Space",
-                "\\LogicalDisk(_Total)\\Free Megabytes",
-                "\\LogicalDisk(_Total)\\Disk Reads/sec",
-                "\\LogicalDisk(_Total)\\Disk Writes/sec",
-                "\\LogicalDisk(_Total)\\Disk Transfers/sec",
-                "\\Network Interface(*)\\Bytes Total/sec",
-                "\\Network Interface(*)\\Bytes Sent/sec",
-                "\\Network Interface(*)\\Bytes Received/sec",
-                "\\System\\Processor Queue Length",
-                "\\Process(_Total)\\Thread Count",
-                "\\Process(_Total)\\Handle Count"
-              ]
-            }
-          ]
-        },
-        "destinations": {
-          "logAnalytics": [
-            {
-              "workspaceResourceId": "[if(parameters('enableClassicMetrics'), resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName')), '')]",
-              "name": "LogAnalyticsDestination"
-            }
-          ],
-          "azureMonitorMetrics": {
-            "name": "AzureMonitorMetricsDestination"
-          }
-        },
-        "dataFlows": [
-          {
-            "streams": [
-              "Microsoft-Perf"
-            ],
-            "destinations": [
-              "LogAnalyticsDestination"
-            ]
-          },
-          {
-            "streams": [
-              "Microsoft-InsightsMetrics"
-            ],
-            "destinations": [
-              "AzureMonitorMetricsDestination"
-            ]
-          }
-        ]
-      },
-      "dependsOn": [
-        "logAnalyticsWorkspace"
       ]
     },
     "arcServers": {
@@ -388,27 +263,8 @@
         "dataCollectionRule"
       ]
     },
-    "classicDcrAssociations": {
-      "copy": {
-        "name": "classicDcrAssociations",
-        "count": "[length(parameters('arcServerNames'))]"
-      },
-      "condition": "[parameters('enableClassicMetrics')]",
-      "type": "Microsoft.Insights/dataCollectionRuleAssociations",
-      "apiVersion": "2024-03-11",
-      "scope": "[resourceId('Microsoft.HybridCompute/machines', parameters('arcServerNames')[copyIndex()])]",
-      "name": "VMInsightsPerfAssociation",
-      "properties": {
-        "dataCollectionRuleId": "[resourceId('Microsoft.Insights/dataCollectionRules', format('MSVMI-perf-{0}', resourceGroup().name))]",
-        "description": "[format('Association of classic perf counter DCR with Arc-enabled server {0}', parameters('arcServerNames')[copyIndex()])]"
-      },
-      "dependsOn": [
-        "[format('amaExtensions[{0}]', copyIndex())]",
-        "classicDataCollectionRule"
-      ]
-    },
     "cpuAlertRuleGroup": {
-      "condition": "[and(parameters('enableCpuAlert'), parameters('enableAdditionalMetrics'))]",
+      "condition": "[parameters('enableCpuAlert')]",
       "type": "Microsoft.AlertsManagement/prometheusRuleGroups",
       "apiVersion": "2023-03-01",
       "name": "[format('CPU-High-Utilization-{0}', resourceGroup().name)]",
@@ -448,7 +304,7 @@
       ]
     },
     "memoryAlertRuleGroup": {
-      "condition": "[and(parameters('enableMemoryAlert'), parameters('enableAdditionalMetrics'))]",
+      "condition": "[parameters('enableMemoryAlert')]",
       "type": "Microsoft.AlertsManagement/prometheusRuleGroups",
       "apiVersion": "2023-03-01",
       "name": "[format('Memory-High-Utilization-{0}', resourceGroup().name)]",
@@ -488,7 +344,7 @@
       ]
     },
     "diskAlertRuleGroup": {
-      "condition": "[and(parameters('enableDiskAlert'), parameters('enableAdditionalMetrics'))]",
+      "condition": "[parameters('enableDiskAlert')]",
       "type": "Microsoft.AlertsManagement/prometheusRuleGroups",
       "apiVersion": "2023-03-01",
       "name": "[format('Disk-High-Utilization-{0}', resourceGroup().name)]",
@@ -539,23 +395,9 @@
     "dataCollectionRuleId": {
       "type": "string",
       "metadata": {
-        "description": "Resource ID of the OTel Data Collection Rule."
+        "description": "Resource ID of the Data Collection Rule."
       },
       "value": "[resourceId('Microsoft.Insights/dataCollectionRules', parameters('dcrName'))]"
-    },
-    "logAnalyticsWorkspaceId": {
-      "type": "string",
-      "metadata": {
-        "description": "Resource ID of the Log Analytics workspace (if enabled)."
-      },
-      "value": "[if(parameters('enableClassicMetrics'), resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName')), '')]"
-    },
-    "classicDataCollectionRuleId": {
-      "type": "string",
-      "metadata": {
-        "description": "Resource ID of the classic perf counter DCR (if enabled)."
-      },
-      "value": "[if(parameters('enableClassicMetrics'), resourceId('Microsoft.Insights/dataCollectionRules', format('MSVMI-perf-{0}', resourceGroup().name)), '')]"
     },
     "configuredServers": {
       "type": "array",

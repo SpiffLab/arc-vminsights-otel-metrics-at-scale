@@ -1,88 +1,84 @@
 # Arc VMInsights OTel Metrics @ Scale
 
-Deploy **VM Insights with OpenTelemetry** metrics collection to multiple Azure Arc-enabled Windows servers in a resource group using Bicep.
+Deploy **VM Insights with OpenTelemetry** metrics and **Prometheus alert rules** to Azure Arc-enabled Windows servers at scale using Bicep.
 
 ## Overview
 
-This template enables the new OpenTelemetry-based VM Insights experience across all your Arc-enabled Windows servers at scale. It deploys shared monitoring infrastructure once (Azure Monitor Workspace + Data Collection Rule) and loops over your server list to install the Azure Monitor Agent and associate the DCR with each server.
+This template enables the OpenTelemetry-based VM Insights experience across all your Arc-enabled Windows servers in a resource group. A single deployment creates shared monitoring infrastructure and loops over your server list to install the Azure Monitor Agent and associate each server with the data collection rule.
+
+Alert rules for CPU, memory, and disk utilization are included and enabled by default.
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│  Resource Group                                     │
-│                                                     │
-│  ┌─────────────────────┐  ┌──────────────────────┐  │
-│  │ Azure Monitor        │  │ Data Collection Rule │  │
-│  │ Workspace (OTel)     │◄─│ (OTel perf counters) │  │
-│  └─────────────────────┘  └──────────┬───────────┘  │
-│                                      │ DCR Assoc.   │
-│          ┌───────────────────────────┼───────┐      │
-│          │                           │       │      │
-│  ┌───────▼───────┐  ┌───────────────▼┐  ┌───▼───┐  │
-│  │ Arc Server 1  │  │ Arc Server 2   │  │  ...  │  │
-│  │ + AMA Agent   │  │ + AMA Agent    │  │       │  │
-│  └───────────────┘  └────────────────┘  └───────┘  │
-└─────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│  Resource Group                                          │
+│                                                          │
+│  ┌─────────────────────┐  ┌────────────────────────────┐ │
+│  │ Azure Monitor        │  │ Data Collection Rule (OTel)│ │
+│  │ Workspace            │◄─│ CPU, Memory, Disk, Network │ │
+│  └────────┬────────────┘  └──────────┬─────────────────┘ │
+│           │                          │ DCR Association    │
+│  ┌────────▼────────────┐    ┌────────┼──────────┐        │
+│  │ Prometheus Alerts    │    │        │          │        │
+│  │ • HighCpuUtilization │    │        │          │        │
+│  │ • HighMemoryUtil.    │    │        │          │        │
+│  │ • HighDiskUtilization│    │        │          │        │
+│  └─────────────────────┘    │        │          │        │
+│          ┌──────────────────┼────────┼──────┐   │        │
+│  ┌───────▼───────┐  ┌──────▼────────▼┐  ┌──▼───┐        │
+│  │ Arc Server 1  │  │ Arc Server 2   │  │ ...  │        │
+│  │ + AMA Agent   │  │ + AMA Agent    │  │      │        │
+│  └───────────────┘  └────────────────┘  └──────┘        │
+└──────────────────────────────────────────────────────────┘
 ```
 
 ## What it deploys
 
 | Resource | Type | Scope | Purpose |
 |----------|------|-------|---------|
-| Azure Monitor Workspace | `Microsoft.Monitor/accounts` | Once per RG | Cost-efficient OTel metrics storage |
-| Data Collection Rule (OTel) | `Microsoft.Insights/dataCollectionRules` | Once per RG | Configures OTel performance counter collection |
-| Log Analytics Workspace | `Microsoft.OperationalInsights/workspaces` | Once per RG | Classic perf counter storage (if `enableClassicMetrics`) |
-| Data Collection Rule (Classic) | `Microsoft.Insights/dataCollectionRules` | Once per RG | Windows perf counters to Log Analytics (if `enableClassicMetrics`) |
-| Prometheus Alert Rule | `Microsoft.AlertsManagement/prometheusRuleGroups` | Once per RG | Fires when CPU exceeds threshold for 3+ min |
-| Prometheus Alert Rule | `Microsoft.AlertsManagement/prometheusRuleGroups` | Once per RG | Fires when memory exceeds threshold for 5+ min |
-| Prometheus Alert Rule | `Microsoft.AlertsManagement/prometheusRuleGroups` | Once per RG | Fires when disk exceeds threshold for 5+ min |
+| Azure Monitor Workspace | `Microsoft.Monitor/accounts` | Once per RG | OTel metrics storage |
+| Data Collection Rule | `Microsoft.Insights/dataCollectionRules` | Once per RG | OTel performance counter collection |
+| Prometheus Alert Rules | `Microsoft.AlertsManagement/prometheusRuleGroups` | Once per RG | CPU, memory, and disk utilization alerts |
 | Azure Monitor Agent | `Microsoft.HybridCompute/machines/extensions` | Per server | Collects telemetry from each Arc server |
-| DCR Association (OTel) | `Microsoft.Insights/dataCollectionRuleAssociations` | Per server | Links OTel DCR to each Arc server |
-| DCR Association (Classic) | `Microsoft.Insights/dataCollectionRuleAssociations` | Per server | Links classic DCR to each server (if `enableClassicMetrics`) |
+| DCR Association | `Microsoft.Insights/dataCollectionRuleAssociations` | Per server | Links DCR to each Arc server |
 
-## Default metrics (free)
+## Metrics collected
 
-| Metric | Description |
-|--------|-------------|
-| `system.uptime` | Time since last reboot |
-| `system.cpu.time` | Total CPU time consumed |
-| `system.memory.usage` | Memory in use (bytes) |
-| `system.network.io` | Bytes transmitted/received |
-| `system.network.dropped` | Dropped packets |
-| `system.network.errors` | Network errors |
-| `system.disk.io` | Disk I/O (bytes read/written) |
-| `system.disk.operations` | Disk operations (read/write counts) |
-| `system.disk.operation_time` | Average disk operation time |
-| `system.filesystem.usage` | Filesystem usage in bytes |
+The DCR collects default free metrics plus the utilization metrics needed for alerting:
 
-## Additional metrics (optional, extra cost)
+| Metric | Description | Cost |
+|--------|-------------|------|
+| `system.uptime` | Time since last reboot | Free |
+| `system.cpu.time` | Total CPU time consumed | Free |
+| `system.memory.usage` | Memory in use (bytes) | Free |
+| `system.network.io` | Bytes transmitted/received | Free |
+| `system.network.dropped` | Dropped packets | Free |
+| `system.network.errors` | Network errors | Free |
+| `system.disk.io` | Disk I/O (bytes read/written) | Free |
+| `system.disk.operations` | Disk operations (read/write counts) | Free |
+| `system.disk.operation_time` | Average disk operation time | Free |
+| `system.filesystem.usage` | Filesystem usage in bytes | Free |
+| `system.cpu.utilization` | CPU usage % | Additional |
+| `system.memory.utilization` | Memory usage % | Additional |
+| `system.filesystem.utilization` | Disk usage % | Additional |
 
-Set `enableAdditionalMetrics = true` to collect extended system and per-process metrics including:
+## Alert rules
 
-| Category | Metrics |
-|----------|---------|
-| CPU | `system.cpu.utilization`, `system.cpu.logical.count` |
-| Memory | `system.memory.utilization`, `system.memory.limit` |
-| Disk | `system.disk.io_time`, `system.disk.pending_operations` |
-| Network | `system.network.packets`, `system.network.connections` |
-| Per-process | `process.cpu.time`, `process.cpu.utilization`, `process.memory.usage`, `process.memory.virtual`, `process.memory.utilization`, `process.disk.io`, `process.disk.operations`, `process.threads`, `process.handles`, `process.uptime` |
+Three Prometheus alert rules are deployed by default:
 
-See the full list in [Microsoft's documentation](https://learn.microsoft.com/en-us/azure/azure-monitor/vm/vminsights-opentelemetry).
+| Alert | Metric | Default Threshold | Default Duration | Severity |
+|-------|--------|--------------------|------------------|----------|
+| **HighCpuUtilization** | `system_cpu_utilization` | 70% | 3 minutes | Warning (2) |
+| **HighMemoryUtilization** | `system_memory_utilization` | 90% | 5 minutes | Warning (2) |
+| **HighDiskUtilization** | `system_filesystem_utilization` | 90% | 5 minutes | Error (1) |
 
-## Classic performance counters (for metric alerts)
+All alerts:
+- Evaluate **per host** (`host_name` label) so you know which server is affected
+- **Auto-resolve** once the condition clears (CPU/memory: 5 min, disk: 10 min)
+- Can be connected to an **Action Group** in the Azure portal for email, SMS, or webhook notifications
 
-Set `enableClassicMetrics = true` to deploy a Log Analytics workspace and a second DCR that collects traditional Windows performance counters. This enables **metric alerts** (signal type: "Metric") in Azure Monitor, which some teams prefer for their simpler configuration and integration with existing alert workflows.
-
-Counters collected:
-
-| Category | Counters |
-|----------|----------|
-| CPU | `\Processor(_Total)\% Processor Time` |
-| Memory | `\Memory\% Committed Bytes In Use`, `\Memory\Available MBytes` |
-| Disk | `\LogicalDisk(_Total)\% Free Space`, `\LogicalDisk(_Total)\Free Megabytes`, `\LogicalDisk(_Total)\Disk Reads/sec`, `\LogicalDisk(_Total)\Disk Writes/sec`, `\LogicalDisk(_Total)\Disk Transfers/sec` |
-| Network | `\Network Interface(*)\Bytes Total/sec`, `\Network Interface(*)\Bytes Sent/sec`, `\Network Interface(*)\Bytes Received/sec` |
-| System | `\System\Processor Queue Length`, `\Process(_Total)\Thread Count`, `\Process(_Total)\Handle Count` |
+The disk alert additionally groups by **`mountpoint`** so you can identify which drive is filling up.
 
 ## Prerequisites
 
@@ -109,17 +105,15 @@ servers=$(az connectedmachine list \
 az deployment group create \
   --resource-group $rg \
   --template-uri "https://raw.githubusercontent.com/SpiffLab/arc-vminsights-otel-metrics-at-scale/master/main.json" \
-  --parameters arcServerNames="$servers" enableAdditionalMetrics=true
+  --parameters arcServerNames="$servers"
 ```
 
-This auto-discovers all Windows Arc servers (filtering out Linux by `osType`), deploys OTel metrics collection **and** enables the CPU, memory, and disk alert rules.
-
-> **PowerShell users:** The JSON array from `az connectedmachine list` may lose quotes when passed as a parameter. Use this approach instead:
+> **PowerShell users:** The JSON array may lose quotes when passed as a parameter. Use this approach instead:
 > ```powershell
 > $rg = "<your-resource-group>"
 > $servers = (az connectedmachine list --resource-group $rg --query "[?osType=='windows'].name" -o tsv) -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ }
 > $serverArray = "['" + ($servers -join "','") + "']"
-> az deployment group create --resource-group $rg --template-file main.bicep --parameters arcServerNames="$serverArray" enableAdditionalMetrics=true
+> az deployment group create --resource-group $rg --template-file main.bicep --parameters arcServerNames="$serverArray"
 > ```
 
 ### Option 2: Clone and customize
@@ -139,13 +133,12 @@ This auto-discovers all Windows Arc servers (filtering out Linux by `osType`), d
    ]
    ```
 
-3. **Deploy** (with alerts enabled)
+3. **Deploy**
    ```bash
    az deployment group create \
      --resource-group <your-resource-group> \
      --template-file main.bicep \
-     --parameters main.bicepparam \
-     --parameters enableAdditionalMetrics=true
+     --parameters main.bicepparam
    ```
 
 4. **Verify** — In the Azure portal, navigate to **Azure Arc → Servers → [your server] → Monitoring → Insights** to confirm OTel metrics are flowing.
@@ -159,13 +152,10 @@ This auto-discovers all Windows Arc servers (filtering out Linux by `osType`), d
 | `azureMonitorWorkspaceName` | string | `amw-vminsights-otel` | Azure Monitor Workspace name |
 | `dcrName` | string | `MSVMI-otel-<resource-group>` | Data Collection Rule name (auto-derived from RG) |
 | `samplingFrequencyInSeconds` | int | `60` | Metric polling interval (10–300 seconds) |
-| `enableAdditionalMetrics` | bool | `false` | Enable extended per-process metrics (extra cost) |
-| `enableClassicMetrics` | bool | `false` | Enable classic perf counters → Log Analytics for metric alerts |
-| `logAnalyticsWorkspaceName` | string | `law-vminsights-<rg>` | Log Analytics workspace name (auto-derived from RG) |
 | `enableCpuAlert` | bool | `true` | Enable Prometheus CPU utilization alert rule |
 | `cpuAlertThreshold` | string | `'0.70'` | CPU threshold (0–1 ratio, e.g. 0.70 = 70%) |
 | `cpuAlertDuration` | string | `'PT3M'` | Duration CPU must exceed threshold before firing |
-| `cpuAlertSeverity` | int | `2` | Alert severity (0=Critical … 4=Verbose) |
+| `cpuAlertSeverity` | int | `2` | CPU alert severity (0=Critical … 4=Verbose) |
 | `enableMemoryAlert` | bool | `true` | Enable Prometheus memory utilization alert rule |
 | `memoryAlertThreshold` | string | `'0.90'` | Memory threshold (0–1 ratio, e.g. 0.90 = 90%) |
 | `memoryAlertDuration` | string | `'PT5M'` | Duration memory must exceed threshold before firing |
@@ -182,36 +172,17 @@ This auto-discovers all Windows Arc servers (filtering out Linux by `osType`), d
 - **Per-server resources** (AMA extension, DCR association) are deployed in a loop with `@batchSize(5)` for controlled rollout.
 - The template is **idempotent** — re-running it with additional servers in the array will onboard only the new servers.
 
-## Alert rules
-
-When `enableAdditionalMetrics = true`, the template deploys three Prometheus alert rules:
-
-| Alert | Metric | Default Threshold | Default Duration | Severity |
-|-------|--------|--------------------|------------------|----------|
-| **HighCpuUtilization** | `system_cpu_utilization` | 70% | 3 minutes | Warning (2) |
-| **HighMemoryUtilization** | `system_memory_utilization` | 90% | 5 minutes | Warning (2) |
-| **HighDiskUtilization** | `system_filesystem_utilization` | 90% | 5 minutes | Error (1) |
-
-All alerts:
-- Evaluate **per host** (`host_name` label) so you know which server is affected
-- **Auto-resolve** once the condition clears (CPU/memory: 5 min, disk: 10 min)
-- Can be connected to an **Action Group** in the Azure portal for email, SMS, or webhook notifications
-
-The disk alert additionally groups by **`mountpoint`** so you can identify which drive is filling up. Its default severity is **Error (1)** since full disks can cause outages.
-
-> **Note:** Alert rules require `enableAdditionalMetrics = true` since `system.cpu.utilization`, `system.memory.utilization`, and `system.filesystem.utilization` are additional metrics.
-
 ## Viewing metrics
 
 OTel metrics are stored in the **Azure Monitor Workspace**, not on the individual Arc server resources. To view them:
 
-1. In the Azure portal, navigate to **Azure Monitor → Azure Monitor Workspaces → `amw-vminsights-otel`**
+1. Navigate to **Azure Monitor → Azure Monitor Workspaces → `amw-vminsights-otel`**
 2. Select **Metrics** to open Metrics Explorer with PromQL support
-3. Query metrics like `system_cpu_utilization` or `system_memory_utilization`, filtering by `host_name`
+3. Query metrics like `system_cpu_utilization`, filtering by `host_name`
 
-Alternatively, go to **Azure Arc → Servers → [your server] → Monitoring → Insights** to see the VM Insights dashboards.
+Alternatively, go to **Azure Arc → Servers → [your server] → Monitoring → Insights** for VM Insights dashboards.
 
-> **Important:** Do **not** look for OTel metrics by scoping to the Arc server resources in Metrics Explorer — they won't appear there. Always scope to the **Azure Monitor Workspace**.
+> **Important:** `Microsoft.HybridCompute/machines` is not a supported platform metric namespace. OTel metrics will **not** appear when scoping to Arc servers directly — always scope to the **Azure Monitor Workspace**.
 
 ## Viewing alert rules
 
@@ -219,9 +190,9 @@ Prometheus alert rules appear in a specific location in the portal:
 
 1. Navigate to **Azure Monitor → Alerts → Alert rules**
 2. Filter by your resource group
-3. Set **Signal type** to **Prometheus** — these rules won't show if filtered to "Metric" or "Log"
+3. Set **Signal type** to **Prometheus** — these rules won't show under "Metric" or "Log"
 
-You can also verify deployed rules via CLI:
+Verify via CLI:
 
 ```bash
 az resource list \

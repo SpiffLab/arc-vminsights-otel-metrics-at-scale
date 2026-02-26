@@ -9,12 +9,8 @@ param arcServerNames = [
 // Optional: Customize these as needed
 param azureMonitorWorkspaceName = 'amw-vminsights-otel'
 param samplingFrequencyInSeconds = 60
-param enableAdditionalMetrics = false
 
-// Classic performance counters for Log Analytics metric alerts
-param enableClassicMetrics = false
-
-// Alert rule settings (requires enableAdditionalMetrics = true)
+// Alert rule settings
 param enableCpuAlert = true
 param cpuAlertThreshold = '0.70'
 param cpuAlertSeverity = 2
