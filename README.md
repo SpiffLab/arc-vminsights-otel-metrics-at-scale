@@ -79,10 +79,9 @@ Run this in **Azure CloudShell (Bash)** to auto-discover all Windows Arc servers
 ```bash
 rg="<your-resource-group>"
 
-servers=$(az resource list \
+servers=$(az connectedmachine list \
   --resource-group $rg \
-  --resource-type "Microsoft.HybridCompute/machines" \
-  --query "[?properties.osType=='windows'].name" -o json)
+  --query "[?osType=='windows'].name" -o json)
 
 az deployment group create \
   --resource-group $rg \
