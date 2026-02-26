@@ -192,13 +192,14 @@ resource classicDataCollectionRule 'Microsoft.Insights/dataCollectionRules@2024-
   location: location
   tags: tags
   properties: {
-    description: 'DCR for classic Windows performance counters sent to Log Analytics'
+    description: 'DCR for Windows performance counters sent to Log Analytics and Azure Monitor Metrics'
     dataSources: {
       performanceCounters: [
         {
           name: 'WindowsPerfCounters'
           streams: [
             'Microsoft-Perf'
+            'Microsoft-InsightsMetrics'
           ]
           samplingFrequencyInSeconds: samplingFrequencyInSeconds
           counterSpecifiers: [
@@ -227,6 +228,9 @@ resource classicDataCollectionRule 'Microsoft.Insights/dataCollectionRules@2024-
           name: 'LogAnalyticsDestination'
         }
       ]
+      azureMonitorMetrics: {
+        name: 'AzureMonitorMetricsDestination'
+      }
     }
     dataFlows: [
       {
@@ -235,6 +239,14 @@ resource classicDataCollectionRule 'Microsoft.Insights/dataCollectionRules@2024-
         ]
         destinations: [
           'LogAnalyticsDestination'
+        ]
+      }
+      {
+        streams: [
+          'Microsoft-InsightsMetrics'
+        ]
+        destinations: [
+          'AzureMonitorMetricsDestination'
         ]
       }
     ]

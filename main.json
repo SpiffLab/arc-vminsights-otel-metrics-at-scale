@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.40.2.10011",
-      "templateHash": "6966712335056112682"
+      "templateHash": "6355625211631283311"
     }
   },
   "parameters": {
@@ -278,13 +278,14 @@
       "location": "[parameters('location')]",
       "tags": "[parameters('tags')]",
       "properties": {
-        "description": "DCR for classic Windows performance counters sent to Log Analytics",
+        "description": "DCR for Windows performance counters sent to Log Analytics and Azure Monitor Metrics",
         "dataSources": {
           "performanceCounters": [
             {
               "name": "WindowsPerfCounters",
               "streams": [
-                "Microsoft-Perf"
+                "Microsoft-Perf",
+                "Microsoft-InsightsMetrics"
               ],
               "samplingFrequencyInSeconds": "[parameters('samplingFrequencyInSeconds')]",
               "counterSpecifiers": [
@@ -312,7 +313,10 @@
               "workspaceResourceId": "[if(parameters('enableClassicMetrics'), resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName')), '')]",
               "name": "LogAnalyticsDestination"
             }
-          ]
+          ],
+          "azureMonitorMetrics": {
+            "name": "AzureMonitorMetricsDestination"
+          }
         },
         "dataFlows": [
           {
@@ -321,6 +325,14 @@
             ],
             "destinations": [
               "LogAnalyticsDestination"
+            ]
+          },
+          {
+            "streams": [
+              "Microsoft-InsightsMetrics"
+            ],
+            "destinations": [
+              "AzureMonitorMetricsDestination"
             ]
           }
         ]
