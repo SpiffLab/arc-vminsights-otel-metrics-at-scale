@@ -70,6 +70,7 @@ See the full list in [Microsoft's documentation](https://learn.microsoft.com/en-
 ## Prerequisites
 
 - Azure CLI with Bicep support (`az bicep install`)
+- The `connectedmachine` Azure CLI extension (auto-installs on first use, or run `az extension add --name connectedmachine`)
 - One or more Azure Arc-enabled Windows servers in the target resource group
 - **Contributor** role on the target resource group
 
@@ -78,6 +79,8 @@ See the full list in [Microsoft's documentation](https://learn.microsoft.com/en-
 ### Option 1: Deploy directly from GitHub (no clone needed)
 
 Run this in **Azure CloudShell (Bash)** to auto-discover all Windows Arc servers in a resource group and deploy:
+
+> **Note:** The `az connectedmachine` command may prompt to install the `connectedmachine` extension on first use. Type `Y` to continue.
 
 ```bash
 rg="<your-resource-group>"
@@ -92,7 +95,15 @@ az deployment group create \
   --parameters arcServerNames="$servers" enableAdditionalMetrics=true
 ```
 
-This auto-discovers all Windows Arc servers, deploys OTel metrics collection **and** enables the CPU, memory, and disk alert rules.
+This auto-discovers all Windows Arc servers (filtering out Linux by `osType`), deploys OTel metrics collection **and** enables the CPU, memory, and disk alert rules.
+
+> **PowerShell users:** The JSON array from `az connectedmachine list` may lose quotes when passed as a parameter. Use this approach instead:
+> ```powershell
+> $rg = "<your-resource-group>"
+> $servers = (az connectedmachine list --resource-group $rg --query "[?osType=='windows'].name" -o tsv) -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+> $serverArray = "['" + ($servers -join "','") + "']"
+> az deployment group create --resource-group $rg --template-file main.bicep --parameters arcServerNames="$serverArray" enableAdditionalMetrics=true
+> ```
 
 ### Option 2: Clone and customize
 
@@ -180,6 +191,36 @@ OTel metrics are stored in the **Azure Monitor Workspace**, not on the individua
 3. Query metrics like `system_cpu_utilization` or `system_memory_utilization`, filtering by `host_name`
 
 Alternatively, go to **Azure Arc → Servers → [your server] → Monitoring → Insights** to see the VM Insights dashboards.
+
+> **Important:** Do **not** look for OTel metrics by scoping to the Arc server resources in Metrics Explorer — they won't appear there. Always scope to the **Azure Monitor Workspace**.
+
+## Viewing alert rules
+
+Prometheus alert rules appear in a specific location in the portal:
+
+1. Navigate to **Azure Monitor → Alerts → Alert rules**
+2. Filter by your resource group
+3. Set **Signal type** to **Prometheus** — these rules won't show if filtered to "Metric" or "Log"
+
+You can also verify deployed rules via CLI:
+
+```bash
+az resource list \
+  --resource-group <your-resource-group> \
+  --resource-type "Microsoft.AlertsManagement/prometheusRuleGroups" \
+  -o table
+```
+
+## Troubleshooting
+
+| Issue | Cause | Fix |
+|-------|-------|-----|
+| `az connectedmachine` prompts to install extension | First-time use of the CLI extension | Type `Y` or pre-install with `az extension add --name connectedmachine` |
+| Server list is empty | `osType` filter is case-sensitive | Use lowercase `'windows'` (not `'Windows'`) |
+| JSON parse error with `--parameters` in PowerShell | PowerShell strips quotes from JSON arrays | Use the TSV + string-building approach shown in the Quick Start |
+| Metrics not visible on Arc server blade | OTel metrics go to Azure Monitor Workspace, not the server | Scope to the Azure Monitor Workspace in Metrics Explorer |
+| Alert rules missing in portal | Portal defaults to "Metric" signal type | Change signal type filter to "Prometheus" |
+| Charts stuck loading in VM Insights | Network traffic to `monitor.azure.com` is blocked | Disable ad blockers or allowlist `monitor.azure.com` |
 
 ## References
 
