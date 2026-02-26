@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.40.2.10011",
-      "templateHash": "13095047128728100730"
+      "templateHash": "6966712335056112682"
     }
   },
   "parameters": {
@@ -62,6 +62,20 @@
       "defaultValue": false,
       "metadata": {
         "description": "Enable additional per-process and extended metrics (incurs extra cost)."
+      }
+    },
+    "enableClassicMetrics": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Enable classic performance counter DCR for Log Analytics-based metric alerts."
+      }
+    },
+    "logAnalyticsWorkspaceName": {
+      "type": "string",
+      "defaultValue": "[format('law-vminsights-{0}', resourceGroup().name)]",
+      "metadata": {
+        "description": "Name of the Log Analytics workspace for classic performance counters."
       }
     },
     "enableCpuAlert": {
@@ -242,6 +256,79 @@
         "azureMonitorWorkspace"
       ]
     },
+    "logAnalyticsWorkspace": {
+      "condition": "[parameters('enableClassicMetrics')]",
+      "type": "Microsoft.OperationalInsights/workspaces",
+      "apiVersion": "2023-09-01",
+      "name": "[parameters('logAnalyticsWorkspaceName')]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "properties": {
+        "sku": {
+          "name": "PerGB2018"
+        },
+        "retentionInDays": 30
+      }
+    },
+    "classicDataCollectionRule": {
+      "condition": "[parameters('enableClassicMetrics')]",
+      "type": "Microsoft.Insights/dataCollectionRules",
+      "apiVersion": "2024-03-11",
+      "name": "[format('MSVMI-perf-{0}', resourceGroup().name)]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "properties": {
+        "description": "DCR for classic Windows performance counters sent to Log Analytics",
+        "dataSources": {
+          "performanceCounters": [
+            {
+              "name": "WindowsPerfCounters",
+              "streams": [
+                "Microsoft-Perf"
+              ],
+              "samplingFrequencyInSeconds": "[parameters('samplingFrequencyInSeconds')]",
+              "counterSpecifiers": [
+                "\\Processor(_Total)\\% Processor Time",
+                "\\Memory\\% Committed Bytes In Use",
+                "\\Memory\\Available MBytes",
+                "\\LogicalDisk(_Total)\\% Free Space",
+                "\\LogicalDisk(_Total)\\Free Megabytes",
+                "\\LogicalDisk(_Total)\\Disk Reads/sec",
+                "\\LogicalDisk(_Total)\\Disk Writes/sec",
+                "\\LogicalDisk(_Total)\\Disk Transfers/sec",
+                "\\Network Interface(*)\\Bytes Total/sec",
+                "\\Network Interface(*)\\Bytes Sent/sec",
+                "\\Network Interface(*)\\Bytes Received/sec",
+                "\\System\\Processor Queue Length",
+                "\\Process(_Total)\\Thread Count",
+                "\\Process(_Total)\\Handle Count"
+              ]
+            }
+          ]
+        },
+        "destinations": {
+          "logAnalytics": [
+            {
+              "workspaceResourceId": "[if(parameters('enableClassicMetrics'), resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName')), '')]",
+              "name": "LogAnalyticsDestination"
+            }
+          ]
+        },
+        "dataFlows": [
+          {
+            "streams": [
+              "Microsoft-Perf"
+            ],
+            "destinations": [
+              "LogAnalyticsDestination"
+            ]
+          }
+        ]
+      },
+      "dependsOn": [
+        "logAnalyticsWorkspace"
+      ]
+    },
     "arcServers": {
       "copy": {
         "name": "arcServers",
@@ -287,6 +374,25 @@
       "dependsOn": [
         "[format('amaExtensions[{0}]', copyIndex())]",
         "dataCollectionRule"
+      ]
+    },
+    "classicDcrAssociations": {
+      "copy": {
+        "name": "classicDcrAssociations",
+        "count": "[length(parameters('arcServerNames'))]"
+      },
+      "condition": "[parameters('enableClassicMetrics')]",
+      "type": "Microsoft.Insights/dataCollectionRuleAssociations",
+      "apiVersion": "2024-03-11",
+      "scope": "[resourceId('Microsoft.HybridCompute/machines', parameters('arcServerNames')[copyIndex()])]",
+      "name": "VMInsightsPerfAssociation",
+      "properties": {
+        "dataCollectionRuleId": "[resourceId('Microsoft.Insights/dataCollectionRules', format('MSVMI-perf-{0}', resourceGroup().name))]",
+        "description": "[format('Association of classic perf counter DCR with Arc-enabled server {0}', parameters('arcServerNames')[copyIndex()])]"
+      },
+      "dependsOn": [
+        "[format('amaExtensions[{0}]', copyIndex())]",
+        "classicDataCollectionRule"
       ]
     },
     "cpuAlertRuleGroup": {
@@ -421,9 +527,23 @@
     "dataCollectionRuleId": {
       "type": "string",
       "metadata": {
-        "description": "Resource ID of the Data Collection Rule."
+        "description": "Resource ID of the OTel Data Collection Rule."
       },
       "value": "[resourceId('Microsoft.Insights/dataCollectionRules', parameters('dcrName'))]"
+    },
+    "logAnalyticsWorkspaceId": {
+      "type": "string",
+      "metadata": {
+        "description": "Resource ID of the Log Analytics workspace (if enabled)."
+      },
+      "value": "[if(parameters('enableClassicMetrics'), resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName')), '')]"
+    },
+    "classicDataCollectionRuleId": {
+      "type": "string",
+      "metadata": {
+        "description": "Resource ID of the classic perf counter DCR (if enabled)."
+      },
+      "value": "[if(parameters('enableClassicMetrics'), resourceId('Microsoft.Insights/dataCollectionRules', format('MSVMI-perf-{0}', resourceGroup().name)), '')]"
     },
     "configuredServers": {
       "type": "array",

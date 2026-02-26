@@ -33,6 +33,12 @@ param tags object = {}
 @description('Enable additional per-process and extended metrics (incurs extra cost).')
 param enableAdditionalMetrics bool = false
 
+@description('Enable classic performance counter DCR for Log Analytics-based metric alerts.')
+param enableClassicMetrics bool = false
+
+@description('Name of the Log Analytics workspace for classic performance counters.')
+param logAnalyticsWorkspaceName string = 'law-vminsights-${resourceGroup().name}'
+
 @description('Enable CPU utilization alert rule (requires enableAdditionalMetrics = true).')
 param enableCpuAlert bool = true
 
@@ -165,6 +171,76 @@ resource dataCollectionRule 'Microsoft.Insights/dataCollectionRules@2024-03-11' 
   }
 }
 
+// ---- Log Analytics Workspace (for classic metric alerts) ----
+
+resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' = if (enableClassicMetrics) {
+  name: logAnalyticsWorkspaceName
+  location: location
+  tags: tags
+  properties: {
+    sku: {
+      name: 'PerGB2018'
+    }
+    retentionInDays: 30
+  }
+}
+
+// ---- Data Collection Rule (Classic Performance Counters) ----
+
+resource classicDataCollectionRule 'Microsoft.Insights/dataCollectionRules@2024-03-11' = if (enableClassicMetrics) {
+  name: 'MSVMI-perf-${resourceGroup().name}'
+  location: location
+  tags: tags
+  properties: {
+    description: 'DCR for classic Windows performance counters sent to Log Analytics'
+    dataSources: {
+      performanceCounters: [
+        {
+          name: 'WindowsPerfCounters'
+          streams: [
+            'Microsoft-Perf'
+          ]
+          samplingFrequencyInSeconds: samplingFrequencyInSeconds
+          counterSpecifiers: [
+            '\\Processor(_Total)\\% Processor Time'
+            '\\Memory\\% Committed Bytes In Use'
+            '\\Memory\\Available MBytes'
+            '\\LogicalDisk(_Total)\\% Free Space'
+            '\\LogicalDisk(_Total)\\Free Megabytes'
+            '\\LogicalDisk(_Total)\\Disk Reads/sec'
+            '\\LogicalDisk(_Total)\\Disk Writes/sec'
+            '\\LogicalDisk(_Total)\\Disk Transfers/sec'
+            '\\Network Interface(*)\\Bytes Total/sec'
+            '\\Network Interface(*)\\Bytes Sent/sec'
+            '\\Network Interface(*)\\Bytes Received/sec'
+            '\\System\\Processor Queue Length'
+            '\\Process(_Total)\\Thread Count'
+            '\\Process(_Total)\\Handle Count'
+          ]
+        }
+      ]
+    }
+    destinations: {
+      logAnalytics: [
+        {
+          workspaceResourceId: enableClassicMetrics ? logAnalyticsWorkspace.id : ''
+          name: 'LogAnalyticsDestination'
+        }
+      ]
+    }
+    dataFlows: [
+      {
+        streams: [
+          'Microsoft-Perf'
+        ]
+        destinations: [
+          'LogAnalyticsDestination'
+        ]
+      }
+    ]
+  }
+}
+
 // ---- Per-Server Resources (AMA Extension + DCR Association) ----
 
 @batchSize(5)
@@ -196,6 +272,20 @@ resource dcrAssociations 'Microsoft.Insights/dataCollectionRuleAssociations@2024
     properties: {
       dataCollectionRuleId: dataCollectionRule.id
       description: 'Association of VM Insights OTel DCR with Arc-enabled server ${name}'
+    }
+    dependsOn: [
+      amaExtensions[i]
+    ]
+  }
+]
+
+resource classicDcrAssociations 'Microsoft.Insights/dataCollectionRuleAssociations@2024-03-11' = [
+  for (name, i) in arcServerNames: if (enableClassicMetrics) {
+    name: 'VMInsightsPerfAssociation'
+    scope: arcServers[i]
+    properties: {
+      dataCollectionRuleId: classicDataCollectionRule.id
+      description: 'Association of classic perf counter DCR with Arc-enabled server ${name}'
     }
     dependsOn: [
       amaExtensions[i]
@@ -319,8 +409,14 @@ resource diskAlertRuleGroup 'Microsoft.AlertsManagement/prometheusRuleGroups@202
 @description('Resource ID of the Azure Monitor Workspace.')
 output azureMonitorWorkspaceId string = azureMonitorWorkspace.id
 
-@description('Resource ID of the Data Collection Rule.')
+@description('Resource ID of the OTel Data Collection Rule.')
 output dataCollectionRuleId string = dataCollectionRule.id
+
+@description('Resource ID of the Log Analytics workspace (if enabled).')
+output logAnalyticsWorkspaceId string = enableClassicMetrics ? logAnalyticsWorkspace.id : ''
+
+@description('Resource ID of the classic perf counter DCR (if enabled).')
+output classicDataCollectionRuleId string = enableClassicMetrics ? classicDataCollectionRule.id : ''
 
 @description('Names of Arc servers configured.')
 output configuredServers array = arcServerNames

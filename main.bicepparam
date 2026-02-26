@@ -11,6 +11,9 @@ param azureMonitorWorkspaceName = 'amw-vminsights-otel'
 param samplingFrequencyInSeconds = 60
 param enableAdditionalMetrics = false
 
+// Classic performance counters for Log Analytics metric alerts
+param enableClassicMetrics = false
+
 // Alert rule settings (requires enableAdditionalMetrics = true)
 param enableCpuAlert = true
 param cpuAlertThreshold = '0.70'

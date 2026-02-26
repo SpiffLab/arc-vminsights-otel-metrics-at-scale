@@ -31,12 +31,15 @@ This template enables the new OpenTelemetry-based VM Insights experience across 
 | Resource | Type | Scope | Purpose |
 |----------|------|-------|---------|
 | Azure Monitor Workspace | `Microsoft.Monitor/accounts` | Once per RG | Cost-efficient OTel metrics storage |
-| Data Collection Rule | `Microsoft.Insights/dataCollectionRules` | Once per RG | Configures OTel performance counter collection |
+| Data Collection Rule (OTel) | `Microsoft.Insights/dataCollectionRules` | Once per RG | Configures OTel performance counter collection |
+| Log Analytics Workspace | `Microsoft.OperationalInsights/workspaces` | Once per RG | Classic perf counter storage (if `enableClassicMetrics`) |
+| Data Collection Rule (Classic) | `Microsoft.Insights/dataCollectionRules` | Once per RG | Windows perf counters to Log Analytics (if `enableClassicMetrics`) |
 | Prometheus Alert Rule | `Microsoft.AlertsManagement/prometheusRuleGroups` | Once per RG | Fires when CPU exceeds threshold for 3+ min |
 | Prometheus Alert Rule | `Microsoft.AlertsManagement/prometheusRuleGroups` | Once per RG | Fires when memory exceeds threshold for 5+ min |
 | Prometheus Alert Rule | `Microsoft.AlertsManagement/prometheusRuleGroups` | Once per RG | Fires when disk exceeds threshold for 5+ min |
 | Azure Monitor Agent | `Microsoft.HybridCompute/machines/extensions` | Per server | Collects telemetry from each Arc server |
-| DCR Association | `Microsoft.Insights/dataCollectionRuleAssociations` | Per server | Links DCR to each Arc server |
+| DCR Association (OTel) | `Microsoft.Insights/dataCollectionRuleAssociations` | Per server | Links OTel DCR to each Arc server |
+| DCR Association (Classic) | `Microsoft.Insights/dataCollectionRuleAssociations` | Per server | Links classic DCR to each server (if `enableClassicMetrics`) |
 
 ## Default metrics (free)
 
@@ -66,6 +69,20 @@ Set `enableAdditionalMetrics = true` to collect extended system and per-process 
 | Per-process | `process.cpu.time`, `process.cpu.utilization`, `process.memory.usage`, `process.memory.virtual`, `process.memory.utilization`, `process.disk.io`, `process.disk.operations`, `process.threads`, `process.handles`, `process.uptime` |
 
 See the full list in [Microsoft's documentation](https://learn.microsoft.com/en-us/azure/azure-monitor/vm/vminsights-opentelemetry).
+
+## Classic performance counters (for metric alerts)
+
+Set `enableClassicMetrics = true` to deploy a Log Analytics workspace and a second DCR that collects traditional Windows performance counters. This enables **metric alerts** (signal type: "Metric") in Azure Monitor, which some teams prefer for their simpler configuration and integration with existing alert workflows.
+
+Counters collected:
+
+| Category | Counters |
+|----------|----------|
+| CPU | `\Processor(_Total)\% Processor Time` |
+| Memory | `\Memory\% Committed Bytes In Use`, `\Memory\Available MBytes` |
+| Disk | `\LogicalDisk(_Total)\% Free Space`, `\LogicalDisk(_Total)\Free Megabytes`, `\LogicalDisk(_Total)\Disk Reads/sec`, `\LogicalDisk(_Total)\Disk Writes/sec`, `\LogicalDisk(_Total)\Disk Transfers/sec` |
+| Network | `\Network Interface(*)\Bytes Total/sec`, `\Network Interface(*)\Bytes Sent/sec`, `\Network Interface(*)\Bytes Received/sec` |
+| System | `\System\Processor Queue Length`, `\Process(_Total)\Thread Count`, `\Process(_Total)\Handle Count` |
 
 ## Prerequisites
 
@@ -143,6 +160,8 @@ This auto-discovers all Windows Arc servers (filtering out Linux by `osType`), d
 | `dcrName` | string | `MSVMI-otel-<resource-group>` | Data Collection Rule name (auto-derived from RG) |
 | `samplingFrequencyInSeconds` | int | `60` | Metric polling interval (10–300 seconds) |
 | `enableAdditionalMetrics` | bool | `false` | Enable extended per-process metrics (extra cost) |
+| `enableClassicMetrics` | bool | `false` | Enable classic perf counters → Log Analytics for metric alerts |
+| `logAnalyticsWorkspaceName` | string | `law-vminsights-<rg>` | Log Analytics workspace name (auto-derived from RG) |
 | `enableCpuAlert` | bool | `true` | Enable Prometheus CPU utilization alert rule |
 | `cpuAlertThreshold` | string | `'0.70'` | CPU threshold (0–1 ratio, e.g. 0.70 = 70%) |
 | `cpuAlertDuration` | string | `'PT3M'` | Duration CPU must exceed threshold before firing |
