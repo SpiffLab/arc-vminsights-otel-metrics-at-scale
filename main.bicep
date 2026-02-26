@@ -2,7 +2,7 @@
 // VM Insights with OpenTelemetry for Azure Arc-enabled Windows Servers
 // =============================================================================
 // Deploys: Azure Monitor Workspace, Data Collection Rule (OTel), AMA extension,
-//          and DCR association for an existing Arc-enabled Windows server.
+//          and DCR association for Arc-enabled Windows servers in a resource group.
 // =============================================================================
 
 targetScope = 'resourceGroup'
@@ -12,8 +12,9 @@ targetScope = 'resourceGroup'
 @description('Azure region for all resources.')
 param location string = resourceGroup().location
 
-@description('Name of the existing Azure Arc-enabled server.')
-param arcServerName string
+@description('Names of the existing Azure Arc-enabled servers in the resource group.')
+@minLength(1)
+param arcServerNames string[]
 
 @description('Name of the Azure Monitor Workspace for OTel metrics.')
 param azureMonitorWorkspaceName string = 'amw-vminsights-otel'
@@ -73,12 +74,6 @@ var counterSpecifiers = enableAdditionalMetrics
   ? concat(defaultCounterSpecifiers, additionalCounterSpecifiers)
   : defaultCounterSpecifiers
 
-// ---- Existing Arc Server ----
-
-resource arcServer 'Microsoft.HybridCompute/machines@2024-07-10' existing = {
-  name: arcServerName
-}
-
 // ---- Azure Monitor Workspace ----
 
 resource azureMonitorWorkspace 'Microsoft.Monitor/accounts@2023-04-03' = {
@@ -128,34 +123,43 @@ resource dataCollectionRule 'Microsoft.Insights/dataCollectionRules@2024-03-11' 
   }
 }
 
-// ---- Azure Monitor Agent Extension ----
+// ---- Per-Server Resources (AMA Extension + DCR Association) ----
 
-resource amaExtension 'Microsoft.HybridCompute/machines/extensions@2024-07-10' = {
-  parent: arcServer
-  name: 'AzureMonitorWindowsAgent'
-  location: location
-  tags: tags
-  properties: {
-    publisher: 'Microsoft.Azure.Monitor'
-    type: 'AzureMonitorWindowsAgent'
-    autoUpgradeMinorVersion: true
-    enableAutomaticUpgrade: true
+@batchSize(5)
+resource arcServers 'Microsoft.HybridCompute/machines@2024-07-10' existing = [
+  for name in arcServerNames: {
+    name: name
   }
-}
+]
 
-// ---- DCR Association ----
-
-resource dcrAssociation 'Microsoft.Insights/dataCollectionRuleAssociations@2024-03-11' = {
-  name: 'VMInsightsOTelAssociation'
-  scope: arcServer
-  properties: {
-    dataCollectionRuleId: dataCollectionRule.id
-    description: 'Association of VM Insights OTel DCR with Arc-enabled server'
+resource amaExtensions 'Microsoft.HybridCompute/machines/extensions@2024-07-10' = [
+  for (name, i) in arcServerNames: {
+    parent: arcServers[i]
+    name: 'AzureMonitorWindowsAgent'
+    location: location
+    tags: tags
+    properties: {
+      publisher: 'Microsoft.Azure.Monitor'
+      type: 'AzureMonitorWindowsAgent'
+      autoUpgradeMinorVersion: true
+      enableAutomaticUpgrade: true
+    }
   }
-  dependsOn: [
-    amaExtension
-  ]
-}
+]
+
+resource dcrAssociations 'Microsoft.Insights/dataCollectionRuleAssociations@2024-03-11' = [
+  for (name, i) in arcServerNames: {
+    name: 'VMInsightsOTelAssociation'
+    scope: arcServers[i]
+    properties: {
+      dataCollectionRuleId: dataCollectionRule.id
+      description: 'Association of VM Insights OTel DCR with Arc-enabled server ${name}'
+    }
+    dependsOn: [
+      amaExtensions[i]
+    ]
+  }
+]
 
 // ---- Outputs ----
 
@@ -165,5 +169,5 @@ output azureMonitorWorkspaceId string = azureMonitorWorkspace.id
 @description('Resource ID of the Data Collection Rule.')
 output dataCollectionRuleId string = dataCollectionRule.id
 
-@description('Resource ID of the AMA extension.')
-output amaExtensionId string = amaExtension.id
+@description('Names of Arc servers configured.')
+output configuredServers array = arcServerNames

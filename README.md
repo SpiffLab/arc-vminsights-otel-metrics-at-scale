@@ -64,7 +64,7 @@ See the full list in [Microsoft's documentation](https://learn.microsoft.com/en-
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `location` | string | Resource group location | Azure region |
-| `arcServerName` | string | *(required)* | Name of the Arc-enabled server |
+| `arcServerNames` | string[] | *(required)* | List of Arc-enabled server names |
 | `azureMonitorWorkspaceName` | string | `amw-vminsights-otel` | Monitor workspace name |
 | `dcrName` | string | `MSVMI-otel-<server>` | Data Collection Rule name |
 | `samplingFrequencyInSeconds` | int | `60` | Metric polling interval (10–300s) |

@@ -1,7 +1,10 @@
 using './main.bicep'
 
-// Required: Name of your existing Azure Arc-enabled Windows server
-param arcServerName = '<your-arc-server-name>'
+// Required: Names of your existing Azure Arc-enabled Windows servers
+param arcServerNames = [
+  '<arc-server-1>'
+  '<arc-server-2>'
+]
 
 // Optional: Customize these as needed
 param azureMonitorWorkspaceName = 'amw-vminsights-otel'
