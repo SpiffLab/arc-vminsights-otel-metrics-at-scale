@@ -11,6 +11,11 @@ param azureMonitorWorkspaceName = 'amw-vminsights-otel'
 param samplingFrequencyInSeconds = 60
 param enableAdditionalMetrics = false
 
+// Alert rule settings (requires enableAdditionalMetrics = true)
+param enableCpuAlert = true
+param cpuAlertThreshold = '0.70'
+param cpuAlertSeverity = 2
+
 param tags = {
   environment: 'production'
   managedBy: 'bicep'

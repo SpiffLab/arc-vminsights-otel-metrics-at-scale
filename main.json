@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.40.2.10011",
-      "templateHash": "4091840641433341675"
+      "templateHash": "8924811233616623396"
     }
   },
   "parameters": {
@@ -62,6 +62,36 @@
       "defaultValue": false,
       "metadata": {
         "description": "Enable additional per-process and extended metrics (incurs extra cost)."
+      }
+    },
+    "enableCpuAlert": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Enable CPU utilization alert rule (requires enableAdditionalMetrics = true)."
+      }
+    },
+    "cpuAlertThreshold": {
+      "type": "string",
+      "defaultValue": "0.70",
+      "metadata": {
+        "description": "CPU utilization threshold (0-1). Default 0.70 = 70%."
+      }
+    },
+    "cpuAlertDuration": {
+      "type": "string",
+      "defaultValue": "PT3M",
+      "metadata": {
+        "description": "Duration the CPU must exceed threshold before alerting (ISO 8601). Default PT3M = 3 minutes."
+      }
+    },
+    "cpuAlertSeverity": {
+      "type": "int",
+      "defaultValue": 2,
+      "minValue": 0,
+      "maxValue": 4,
+      "metadata": {
+        "description": "Alert severity (0 = Critical, 1 = Error, 2 = Warning, 3 = Informational, 4 = Verbose)."
       }
     }
   },
@@ -197,6 +227,46 @@
       "dependsOn": [
         "[format('amaExtensions[{0}]', copyIndex())]",
         "dataCollectionRule"
+      ]
+    },
+    "cpuAlertRuleGroup": {
+      "condition": "[and(parameters('enableCpuAlert'), parameters('enableAdditionalMetrics'))]",
+      "type": "Microsoft.AlertsManagement/prometheusRuleGroups",
+      "apiVersion": "2023-03-01",
+      "name": "[format('CPU-High-Utilization-{0}', resourceGroup().name)]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "properties": {
+        "description": "[format('Alert when CPU utilization exceeds {0} for {1}', parameters('cpuAlertThreshold'), parameters('cpuAlertDuration'))]",
+        "enabled": true,
+        "interval": "PT1M",
+        "scopes": [
+          "[resourceId('Microsoft.Monitor/accounts', parameters('azureMonitorWorkspaceName'))]"
+        ],
+        "rules": [
+          {
+            "alert": "HighCpuUtilization",
+            "expression": "[format('avg by (host_name) (avg_over_time(system_cpu_utilization[3m])) > {0}', parameters('cpuAlertThreshold'))]",
+            "for": "[parameters('cpuAlertDuration')]",
+            "severity": "[parameters('cpuAlertSeverity')]",
+            "enabled": true,
+            "annotations": {
+              "summary": "High CPU utilization detected",
+              "description": "[format('CPU utilization on {{{{ $labels.host_name }}}} has been above {0} for more than {1}', parameters('cpuAlertThreshold'), parameters('cpuAlertDuration'))]"
+            },
+            "labels": {
+              "source": "vminsights-otel",
+              "resourceGroup": "[resourceGroup().name]"
+            },
+            "resolveConfiguration": {
+              "autoResolved": true,
+              "timeToResolve": "PT5M"
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "azureMonitorWorkspace"
       ]
     }
   },

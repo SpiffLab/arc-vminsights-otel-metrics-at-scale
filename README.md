@@ -32,6 +32,7 @@ This template enables the new OpenTelemetry-based VM Insights experience across 
 |----------|------|-------|---------|
 | Azure Monitor Workspace | `Microsoft.Monitor/accounts` | Once per RG | Cost-efficient OTel metrics storage |
 | Data Collection Rule | `Microsoft.Insights/dataCollectionRules` | Once per RG | Configures OTel performance counter collection |
+| Prometheus Alert Rule | `Microsoft.AlertsManagement/prometheusRuleGroups` | Once per RG | Fires when CPU exceeds threshold for 3+ min |
 | Azure Monitor Agent | `Microsoft.HybridCompute/machines/extensions` | Per server | Collects telemetry from each Arc server |
 | DCR Association | `Microsoft.Insights/dataCollectionRuleAssociations` | Per server | Links DCR to each Arc server |
 
@@ -126,6 +127,10 @@ az deployment group create \
 | `dcrName` | string | `MSVMI-otel-<resource-group>` | Data Collection Rule name (auto-derived from RG) |
 | `samplingFrequencyInSeconds` | int | `60` | Metric polling interval (10–300 seconds) |
 | `enableAdditionalMetrics` | bool | `false` | Enable extended per-process metrics (extra cost) |
+| `enableCpuAlert` | bool | `true` | Enable Prometheus CPU utilization alert rule |
+| `cpuAlertThreshold` | string | `'0.70'` | CPU threshold (0–1 ratio, e.g. 0.70 = 70%) |
+| `cpuAlertDuration` | string | `'PT3M'` | Duration CPU must exceed threshold before firing |
+| `cpuAlertSeverity` | int | `2` | Alert severity (0=Critical … 4=Verbose) |
 | `tags` | object | `{}` | Tags applied to all resources |
 
 ## Deployment behavior

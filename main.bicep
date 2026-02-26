@@ -33,6 +33,20 @@ param tags object = {}
 @description('Enable additional per-process and extended metrics (incurs extra cost).')
 param enableAdditionalMetrics bool = false
 
+@description('Enable CPU utilization alert rule (requires enableAdditionalMetrics = true).')
+param enableCpuAlert bool = true
+
+@description('CPU utilization threshold (0-1). Default 0.70 = 70%.')
+param cpuAlertThreshold string = '0.70'
+
+@description('Duration the CPU must exceed threshold before alerting (ISO 8601). Default PT3M = 3 minutes.')
+param cpuAlertDuration string = 'PT3M'
+
+@description('Alert severity (0 = Critical, 1 = Error, 2 = Warning, 3 = Informational, 4 = Verbose).')
+@minValue(0)
+@maxValue(4)
+param cpuAlertSeverity int = 2
+
 // ---- Variables ----
 
 var defaultCounterSpecifiers = [
@@ -160,6 +174,43 @@ resource dcrAssociations 'Microsoft.Insights/dataCollectionRuleAssociations@2024
     ]
   }
 ]
+
+// ---- Prometheus Alert Rule (CPU Utilization) ----
+
+resource cpuAlertRuleGroup 'Microsoft.AlertsManagement/prometheusRuleGroups@2023-03-01' = if (enableCpuAlert && enableAdditionalMetrics) {
+  name: 'CPU-High-Utilization-${resourceGroup().name}'
+  location: location
+  tags: tags
+  properties: {
+    description: 'Alert when CPU utilization exceeds ${cpuAlertThreshold} for ${cpuAlertDuration}'
+    enabled: true
+    interval: 'PT1M'
+    scopes: [
+      azureMonitorWorkspace.id
+    ]
+    rules: [
+      {
+        alert: 'HighCpuUtilization'
+        expression: 'avg by (host_name) (avg_over_time(system_cpu_utilization[3m])) > ${cpuAlertThreshold}'
+        for: cpuAlertDuration
+        severity: cpuAlertSeverity
+        enabled: true
+        annotations: {
+          summary: 'High CPU utilization detected'
+          description: 'CPU utilization on {{ $labels.host_name }} has been above ${cpuAlertThreshold} for more than ${cpuAlertDuration}'
+        }
+        labels: {
+          source: 'vminsights-otel'
+          resourceGroup: resourceGroup().name
+        }
+        resolveConfiguration: {
+          autoResolved: true
+          timeToResolve: 'PT5M'
+        }
+      }
+    ]
+  }
+}
 
 // ---- Outputs ----
 
