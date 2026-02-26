@@ -47,6 +47,20 @@ param cpuAlertDuration string = 'PT3M'
 @maxValue(4)
 param cpuAlertSeverity int = 2
 
+@description('Enable memory utilization alert rule (requires enableAdditionalMetrics = true).')
+param enableMemoryAlert bool = true
+
+@description('Memory utilization threshold (0-1). Default 0.90 = 90%.')
+param memoryAlertThreshold string = '0.90'
+
+@description('Duration memory must exceed threshold before alerting (ISO 8601). Default PT5M = 5 minutes.')
+param memoryAlertDuration string = 'PT5M'
+
+@description('Memory alert severity (0 = Critical, 1 = Error, 2 = Warning, 3 = Informational, 4 = Verbose).')
+@minValue(0)
+@maxValue(4)
+param memoryAlertSeverity int = 2
+
 // ---- Variables ----
 
 var defaultCounterSpecifiers = [
@@ -198,6 +212,43 @@ resource cpuAlertRuleGroup 'Microsoft.AlertsManagement/prometheusRuleGroups@2023
         annotations: {
           summary: 'High CPU utilization detected'
           description: 'CPU utilization on {{ $labels.host_name }} has been above ${cpuAlertThreshold} for more than ${cpuAlertDuration}'
+        }
+        labels: {
+          source: 'vminsights-otel'
+          resourceGroup: resourceGroup().name
+        }
+        resolveConfiguration: {
+          autoResolved: true
+          timeToResolve: 'PT5M'
+        }
+      }
+    ]
+  }
+}
+
+// ---- Prometheus Alert Rule (Memory Utilization) ----
+
+resource memoryAlertRuleGroup 'Microsoft.AlertsManagement/prometheusRuleGroups@2023-03-01' = if (enableMemoryAlert && enableAdditionalMetrics) {
+  name: 'Memory-High-Utilization-${resourceGroup().name}'
+  location: location
+  tags: tags
+  properties: {
+    description: 'Alert when memory utilization exceeds ${memoryAlertThreshold} for ${memoryAlertDuration}'
+    enabled: true
+    interval: 'PT1M'
+    scopes: [
+      azureMonitorWorkspace.id
+    ]
+    rules: [
+      {
+        alert: 'HighMemoryUtilization'
+        expression: 'avg by (host_name) (avg_over_time(system_memory_utilization[5m])) > ${memoryAlertThreshold}'
+        for: memoryAlertDuration
+        severity: memoryAlertSeverity
+        enabled: true
+        annotations: {
+          summary: 'High memory utilization detected'
+          description: 'Memory utilization on {{ $labels.host_name }} has been above ${memoryAlertThreshold} for more than ${memoryAlertDuration}'
         }
         labels: {
           source: 'vminsights-otel'

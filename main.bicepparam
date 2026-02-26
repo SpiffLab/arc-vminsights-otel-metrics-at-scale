@@ -16,6 +16,10 @@ param enableCpuAlert = true
 param cpuAlertThreshold = '0.70'
 param cpuAlertSeverity = 2
 
+param enableMemoryAlert = true
+param memoryAlertThreshold = '0.90'
+param memoryAlertSeverity = 2
+
 param tags = {
   environment: 'production'
   managedBy: 'bicep'

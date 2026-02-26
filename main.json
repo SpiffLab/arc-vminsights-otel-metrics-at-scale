@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.40.2.10011",
-      "templateHash": "8924811233616623396"
+      "templateHash": "7510938030908568128"
     }
   },
   "parameters": {
@@ -92,6 +92,36 @@
       "maxValue": 4,
       "metadata": {
         "description": "Alert severity (0 = Critical, 1 = Error, 2 = Warning, 3 = Informational, 4 = Verbose)."
+      }
+    },
+    "enableMemoryAlert": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Enable memory utilization alert rule (requires enableAdditionalMetrics = true)."
+      }
+    },
+    "memoryAlertThreshold": {
+      "type": "string",
+      "defaultValue": "0.90",
+      "metadata": {
+        "description": "Memory utilization threshold (0-1). Default 0.90 = 90%."
+      }
+    },
+    "memoryAlertDuration": {
+      "type": "string",
+      "defaultValue": "PT5M",
+      "metadata": {
+        "description": "Duration memory must exceed threshold before alerting (ISO 8601). Default PT5M = 5 minutes."
+      }
+    },
+    "memoryAlertSeverity": {
+      "type": "int",
+      "defaultValue": 2,
+      "minValue": 0,
+      "maxValue": 4,
+      "metadata": {
+        "description": "Memory alert severity (0 = Critical, 1 = Error, 2 = Warning, 3 = Informational, 4 = Verbose)."
       }
     }
   },
@@ -253,6 +283,46 @@
             "annotations": {
               "summary": "High CPU utilization detected",
               "description": "[format('CPU utilization on {{{{ $labels.host_name }}}} has been above {0} for more than {1}', parameters('cpuAlertThreshold'), parameters('cpuAlertDuration'))]"
+            },
+            "labels": {
+              "source": "vminsights-otel",
+              "resourceGroup": "[resourceGroup().name]"
+            },
+            "resolveConfiguration": {
+              "autoResolved": true,
+              "timeToResolve": "PT5M"
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "azureMonitorWorkspace"
+      ]
+    },
+    "memoryAlertRuleGroup": {
+      "condition": "[and(parameters('enableMemoryAlert'), parameters('enableAdditionalMetrics'))]",
+      "type": "Microsoft.AlertsManagement/prometheusRuleGroups",
+      "apiVersion": "2023-03-01",
+      "name": "[format('Memory-High-Utilization-{0}', resourceGroup().name)]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "properties": {
+        "description": "[format('Alert when memory utilization exceeds {0} for {1}', parameters('memoryAlertThreshold'), parameters('memoryAlertDuration'))]",
+        "enabled": true,
+        "interval": "PT1M",
+        "scopes": [
+          "[resourceId('Microsoft.Monitor/accounts', parameters('azureMonitorWorkspaceName'))]"
+        ],
+        "rules": [
+          {
+            "alert": "HighMemoryUtilization",
+            "expression": "[format('avg by (host_name) (avg_over_time(system_memory_utilization[5m])) > {0}', parameters('memoryAlertThreshold'))]",
+            "for": "[parameters('memoryAlertDuration')]",
+            "severity": "[parameters('memoryAlertSeverity')]",
+            "enabled": true,
+            "annotations": {
+              "summary": "High memory utilization detected",
+              "description": "[format('Memory utilization on {{{{ $labels.host_name }}}} has been above {0} for more than {1}', parameters('memoryAlertThreshold'), parameters('memoryAlertDuration'))]"
             },
             "labels": {
               "source": "vminsights-otel",

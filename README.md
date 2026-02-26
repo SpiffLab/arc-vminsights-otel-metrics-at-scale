@@ -33,6 +33,7 @@ This template enables the new OpenTelemetry-based VM Insights experience across 
 | Azure Monitor Workspace | `Microsoft.Monitor/accounts` | Once per RG | Cost-efficient OTel metrics storage |
 | Data Collection Rule | `Microsoft.Insights/dataCollectionRules` | Once per RG | Configures OTel performance counter collection |
 | Prometheus Alert Rule | `Microsoft.AlertsManagement/prometheusRuleGroups` | Once per RG | Fires when CPU exceeds threshold for 3+ min |
+| Prometheus Alert Rule | `Microsoft.AlertsManagement/prometheusRuleGroups` | Once per RG | Fires when memory exceeds threshold for 5+ min |
 | Azure Monitor Agent | `Microsoft.HybridCompute/machines/extensions` | Per server | Collects telemetry from each Arc server |
 | DCR Association | `Microsoft.Insights/dataCollectionRuleAssociations` | Per server | Links DCR to each Arc server |
 
@@ -131,6 +132,10 @@ az deployment group create \
 | `cpuAlertThreshold` | string | `'0.70'` | CPU threshold (0–1 ratio, e.g. 0.70 = 70%) |
 | `cpuAlertDuration` | string | `'PT3M'` | Duration CPU must exceed threshold before firing |
 | `cpuAlertSeverity` | int | `2` | Alert severity (0=Critical … 4=Verbose) |
+| `enableMemoryAlert` | bool | `true` | Enable Prometheus memory utilization alert rule |
+| `memoryAlertThreshold` | string | `'0.90'` | Memory threshold (0–1 ratio, e.g. 0.90 = 90%) |
+| `memoryAlertDuration` | string | `'PT5M'` | Duration memory must exceed threshold before firing |
+| `memoryAlertSeverity` | int | `2` | Memory alert severity (0=Critical … 4=Verbose) |
 | `tags` | object | `{}` | Tags applied to all resources |
 
 ## Deployment behavior
