@@ -19,7 +19,7 @@ param arcServerName string
 param azureMonitorWorkspaceName string = 'amw-vminsights-otel'
 
 @description('Name of the Data Collection Rule.')
-param dcrName string = 'MSVMI-otel-${arcServerName}'
+param dcrName string = 'MSVMI-otel-${resourceGroup().name}'
 
 @description('Sampling frequency in seconds for OTel performance counters.')
 @minValue(10)
