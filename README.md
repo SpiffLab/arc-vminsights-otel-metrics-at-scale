@@ -151,7 +151,7 @@ az deployment group create \
 
 ## Alert rules
 
-When `enableAdditionalMetrics = true`, the template deploys two Prometheus alert rules:
+When `enableAdditionalMetrics = true`, the template deploys three Prometheus alert rules:
 
 | Alert | Metric | Default Threshold | Default Duration | Severity |
 |-------|--------|--------------------|------------------|----------|
@@ -159,12 +159,14 @@ When `enableAdditionalMetrics = true`, the template deploys two Prometheus alert
 | **HighMemoryUtilization** | `system_memory_utilization` | 90% | 5 minutes | Warning (2) |
 | **HighDiskUtilization** | `system_filesystem_utilization` | 90% | 5 minutes | Error (1) |
 
-Both alerts:
+All alerts:
 - Evaluate **per host** (`host_name` label) so you know which server is affected
-- **Auto-resolve** after 5 minutes below threshold
+- **Auto-resolve** once the condition clears (CPU/memory: 5 min, disk: 10 min)
 - Can be connected to an **Action Group** in the Azure portal for email, SMS, or webhook notifications
 
-> **Note:** Alert rules require `enableAdditionalMetrics = true` since `system.cpu.utilization` and `system.memory.utilization` are additional metrics.
+The disk alert additionally groups by **`mountpoint`** so you can identify which drive is filling up. Its default severity is **Error (1)** since full disks can cause outages.
+
+> **Note:** Alert rules require `enableAdditionalMetrics = true` since `system.cpu.utilization`, `system.memory.utilization`, and `system.filesystem.utilization` are additional metrics.
 
 ## Viewing metrics
 
