@@ -89,8 +89,10 @@ servers=$(az connectedmachine list \
 az deployment group create \
   --resource-group $rg \
   --template-uri "https://raw.githubusercontent.com/SpiffLab/arc-vminsights-otel-metrics-at-scale/master/main.json" \
-  --parameters arcServerNames="$servers"
+  --parameters arcServerNames="$servers" enableAdditionalMetrics=true
 ```
+
+This auto-discovers all Windows Arc servers, deploys OTel metrics collection **and** enables the CPU, memory, and disk alert rules.
 
 ### Option 2: Clone and customize
 
@@ -109,12 +111,13 @@ az deployment group create \
    ]
    ```
 
-3. **Deploy**
+3. **Deploy** (with alerts enabled)
    ```bash
    az deployment group create \
      --resource-group <your-resource-group> \
      --template-file main.bicep \
-     --parameters main.bicepparam
+     --parameters main.bicepparam \
+     --parameters enableAdditionalMetrics=true
    ```
 
 4. **Verify** — In the Azure portal, navigate to **Azure Arc → Servers → [your server] → Monitoring → Insights** to confirm OTel metrics are flowing.
