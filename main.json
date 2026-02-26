@@ -1,0 +1,226 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "languageVersion": "2.0",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.40.2.10011",
+      "templateHash": "4091840641433341675"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Azure region for all resources."
+      }
+    },
+    "arcServerNames": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minLength": 1,
+      "metadata": {
+        "description": "Names of the existing Azure Arc-enabled servers in the resource group."
+      }
+    },
+    "azureMonitorWorkspaceName": {
+      "type": "string",
+      "defaultValue": "amw-vminsights-otel",
+      "metadata": {
+        "description": "Name of the Azure Monitor Workspace for OTel metrics."
+      }
+    },
+    "dcrName": {
+      "type": "string",
+      "defaultValue": "[format('MSVMI-otel-{0}', resourceGroup().name)]",
+      "metadata": {
+        "description": "Name of the Data Collection Rule."
+      }
+    },
+    "samplingFrequencyInSeconds": {
+      "type": "int",
+      "defaultValue": 60,
+      "minValue": 10,
+      "maxValue": 300,
+      "metadata": {
+        "description": "Sampling frequency in seconds for OTel performance counters."
+      }
+    },
+    "tags": {
+      "type": "object",
+      "defaultValue": {},
+      "metadata": {
+        "description": "Tags to apply to all resources."
+      }
+    },
+    "enableAdditionalMetrics": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Enable additional per-process and extended metrics (incurs extra cost)."
+      }
+    }
+  },
+  "variables": {
+    "defaultCounterSpecifiers": [
+      "system.uptime",
+      "system.cpu.time",
+      "system.memory.usage",
+      "system.network.io",
+      "system.network.dropped",
+      "system.network.errors",
+      "system.disk.io",
+      "system.disk.operations",
+      "system.disk.operation_time",
+      "system.filesystem.usage"
+    ],
+    "additionalCounterSpecifiers": [
+      "system.cpu.utilization",
+      "system.cpu.logical.count",
+      "system.memory.utilization",
+      "system.memory.limit",
+      "system.filesystem.utilization",
+      "system.disk.io_time",
+      "system.disk.pending_operations",
+      "system.network.packets",
+      "system.network.connections",
+      "process.uptime",
+      "process.cpu.time",
+      "process.cpu.utilization",
+      "process.memory.usage",
+      "process.memory.virtual",
+      "process.memory.utilization",
+      "process.disk.io",
+      "process.disk.operations",
+      "process.threads",
+      "process.handles"
+    ],
+    "counterSpecifiers": "[if(parameters('enableAdditionalMetrics'), concat(variables('defaultCounterSpecifiers'), variables('additionalCounterSpecifiers')), variables('defaultCounterSpecifiers'))]"
+  },
+  "resources": {
+    "azureMonitorWorkspace": {
+      "type": "Microsoft.Monitor/accounts",
+      "apiVersion": "2023-04-03",
+      "name": "[parameters('azureMonitorWorkspaceName')]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]"
+    },
+    "dataCollectionRule": {
+      "type": "Microsoft.Insights/dataCollectionRules",
+      "apiVersion": "2024-03-11",
+      "name": "[parameters('dcrName')]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "properties": {
+        "description": "DCR for VM Insights OpenTelemetry metrics on Arc-enabled Windows server",
+        "dataSources": {
+          "performanceCountersOTel": [
+            {
+              "name": "OtelDataSource",
+              "streams": [
+                "Microsoft-OtelPerfMetrics"
+              ],
+              "samplingFrequencyInSeconds": "[parameters('samplingFrequencyInSeconds')]",
+              "counterSpecifiers": "[variables('counterSpecifiers')]"
+            }
+          ]
+        },
+        "destinations": {
+          "monitoringAccounts": [
+            {
+              "accountResourceId": "[resourceId('Microsoft.Monitor/accounts', parameters('azureMonitorWorkspaceName'))]",
+              "name": "MonitoringAccountDestination"
+            }
+          ]
+        },
+        "dataFlows": [
+          {
+            "streams": [
+              "Microsoft-OtelPerfMetrics"
+            ],
+            "destinations": [
+              "MonitoringAccountDestination"
+            ]
+          }
+        ]
+      },
+      "dependsOn": [
+        "azureMonitorWorkspace"
+      ]
+    },
+    "arcServers": {
+      "copy": {
+        "name": "arcServers",
+        "count": "[length(parameters('arcServerNames'))]",
+        "mode": "serial",
+        "batchSize": 5
+      },
+      "existing": true,
+      "type": "Microsoft.HybridCompute/machines",
+      "apiVersion": "2024-07-10",
+      "name": "[parameters('arcServerNames')[copyIndex()]]"
+    },
+    "amaExtensions": {
+      "copy": {
+        "name": "amaExtensions",
+        "count": "[length(parameters('arcServerNames'))]"
+      },
+      "type": "Microsoft.HybridCompute/machines/extensions",
+      "apiVersion": "2024-07-10",
+      "name": "[format('{0}/{1}', parameters('arcServerNames')[copyIndex()], 'AzureMonitorWindowsAgent')]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "properties": {
+        "publisher": "Microsoft.Azure.Monitor",
+        "type": "AzureMonitorWindowsAgent",
+        "autoUpgradeMinorVersion": true,
+        "enableAutomaticUpgrade": true
+      }
+    },
+    "dcrAssociations": {
+      "copy": {
+        "name": "dcrAssociations",
+        "count": "[length(parameters('arcServerNames'))]"
+      },
+      "type": "Microsoft.Insights/dataCollectionRuleAssociations",
+      "apiVersion": "2024-03-11",
+      "scope": "[resourceId('Microsoft.HybridCompute/machines', parameters('arcServerNames')[copyIndex()])]",
+      "name": "VMInsightsOTelAssociation",
+      "properties": {
+        "dataCollectionRuleId": "[resourceId('Microsoft.Insights/dataCollectionRules', parameters('dcrName'))]",
+        "description": "[format('Association of VM Insights OTel DCR with Arc-enabled server {0}', parameters('arcServerNames')[copyIndex()])]"
+      },
+      "dependsOn": [
+        "[format('amaExtensions[{0}]', copyIndex())]",
+        "dataCollectionRule"
+      ]
+    }
+  },
+  "outputs": {
+    "azureMonitorWorkspaceId": {
+      "type": "string",
+      "metadata": {
+        "description": "Resource ID of the Azure Monitor Workspace."
+      },
+      "value": "[resourceId('Microsoft.Monitor/accounts', parameters('azureMonitorWorkspaceName'))]"
+    },
+    "dataCollectionRuleId": {
+      "type": "string",
+      "metadata": {
+        "description": "Resource ID of the Data Collection Rule."
+      },
+      "value": "[resourceId('Microsoft.Insights/dataCollectionRules', parameters('dcrName'))]"
+    },
+    "configuredServers": {
+      "type": "array",
+      "metadata": {
+        "description": "Names of Arc servers configured."
+      },
+      "value": "[parameters('arcServerNames')]"
+    }
+  }
+}

@@ -1,2 +1,1 @@
-# Compiled ARM template (regenerate with `az bicep build`)
-main.json
+# Compiled ARM template - keep in sync by running: az bicep build --file main.bicep
