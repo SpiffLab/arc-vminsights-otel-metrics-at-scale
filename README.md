@@ -140,9 +140,35 @@ az deployment group create \
 
 ## Deployment behavior
 
-- **Shared resources** (Azure Monitor Workspace, DCR) are deployed **once** per resource group.
+- **Shared resources** (Azure Monitor Workspace, DCR, alert rules) are deployed **once** per resource group.
 - **Per-server resources** (AMA extension, DCR association) are deployed in a loop with `@batchSize(5)` for controlled rollout.
 - The template is **idempotent** — re-running it with additional servers in the array will onboard only the new servers.
+
+## Alert rules
+
+When `enableAdditionalMetrics = true`, the template deploys two Prometheus alert rules:
+
+| Alert | Metric | Default Threshold | Default Duration | Severity |
+|-------|--------|--------------------|------------------|----------|
+| **HighCpuUtilization** | `system_cpu_utilization` | 70% | 3 minutes | Warning (2) |
+| **HighMemoryUtilization** | `system_memory_utilization` | 90% | 5 minutes | Warning (2) |
+
+Both alerts:
+- Evaluate **per host** (`host_name` label) so you know which server is affected
+- **Auto-resolve** after 5 minutes below threshold
+- Can be connected to an **Action Group** in the Azure portal for email, SMS, or webhook notifications
+
+> **Note:** Alert rules require `enableAdditionalMetrics = true` since `system.cpu.utilization` and `system.memory.utilization` are additional metrics.
+
+## Viewing metrics
+
+OTel metrics are stored in the **Azure Monitor Workspace**, not on the individual Arc server resources. To view them:
+
+1. In the Azure portal, navigate to **Azure Monitor → Azure Monitor Workspaces → `amw-vminsights-otel`**
+2. Select **Metrics** to open Metrics Explorer with PromQL support
+3. Query metrics like `system_cpu_utilization` or `system_memory_utilization`, filtering by `host_name`
+
+Alternatively, go to **Azure Arc → Servers → [your server] → Monitoring → Insights** to see the VM Insights dashboards.
 
 ## References
 
