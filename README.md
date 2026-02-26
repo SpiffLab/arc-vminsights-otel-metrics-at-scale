@@ -1,54 +1,90 @@
 # Arc VMInsights OTel Metrics @ Scale
 
-Deploy **VM Insights with OpenTelemetry** metrics collection to Azure Arc-enabled Windows servers using Bicep.
+Deploy **VM Insights with OpenTelemetry** metrics collection to multiple Azure Arc-enabled Windows servers in a resource group using Bicep.
+
+## Overview
+
+This template enables the new OpenTelemetry-based VM Insights experience across all your Arc-enabled Windows servers at scale. It deploys shared monitoring infrastructure once (Azure Monitor Workspace + Data Collection Rule) and loops over your server list to install the Azure Monitor Agent and associate the DCR with each server.
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────┐
+│  Resource Group                                     │
+│                                                     │
+│  ┌─────────────────────┐  ┌──────────────────────┐  │
+│  │ Azure Monitor        │  │ Data Collection Rule │  │
+│  │ Workspace (OTel)     │◄─│ (OTel perf counters) │  │
+│  └─────────────────────┘  └──────────┬───────────┘  │
+│                                      │ DCR Assoc.   │
+│          ┌───────────────────────────┼───────┐      │
+│          │                           │       │      │
+│  ┌───────▼───────┐  ┌───────────────▼┐  ┌───▼───┐  │
+│  │ Arc Server 1  │  │ Arc Server 2   │  │  ...  │  │
+│  │ + AMA Agent   │  │ + AMA Agent    │  │       │  │
+│  └───────────────┘  └────────────────┘  └───────┘  │
+└─────────────────────────────────────────────────────┘
+```
 
 ## What it deploys
 
-| Resource | Type | Purpose |
-|----------|------|---------|
-| Azure Monitor Workspace | `Microsoft.Monitor/accounts` | Cost-efficient OTel metrics storage |
-| Data Collection Rule | `Microsoft.Insights/dataCollectionRules` | Configures OTel performance counter collection |
-| Azure Monitor Agent | `Microsoft.HybridCompute/machines/extensions` | Collects telemetry from the Arc server |
-| DCR Association | `Microsoft.Insights/dataCollectionRuleAssociations` | Links DCR to the Arc server |
+| Resource | Type | Scope | Purpose |
+|----------|------|-------|---------|
+| Azure Monitor Workspace | `Microsoft.Monitor/accounts` | Once per RG | Cost-efficient OTel metrics storage |
+| Data Collection Rule | `Microsoft.Insights/dataCollectionRules` | Once per RG | Configures OTel performance counter collection |
+| Azure Monitor Agent | `Microsoft.HybridCompute/machines/extensions` | Per server | Collects telemetry from each Arc server |
+| DCR Association | `Microsoft.Insights/dataCollectionRuleAssociations` | Per server | Links DCR to each Arc server |
 
 ## Default metrics (free)
 
-- `system.uptime` — Time since last reboot
-- `system.cpu.time` — Total CPU time consumed
-- `system.memory.usage` — Memory in use (bytes)
-- `system.network.io` — Bytes transmitted/received
-- `system.network.dropped` / `system.network.errors` — Network issues
-- `system.disk.io` / `system.disk.operations` / `system.disk.operation_time` — Disk activity
-- `system.filesystem.usage` — Filesystem usage in bytes
+| Metric | Description |
+|--------|-------------|
+| `system.uptime` | Time since last reboot |
+| `system.cpu.time` | Total CPU time consumed |
+| `system.memory.usage` | Memory in use (bytes) |
+| `system.network.io` | Bytes transmitted/received |
+| `system.network.dropped` | Dropped packets |
+| `system.network.errors` | Network errors |
+| `system.disk.io` | Disk I/O (bytes read/written) |
+| `system.disk.operations` | Disk operations (read/write counts) |
+| `system.disk.operation_time` | Average disk operation time |
+| `system.filesystem.usage` | Filesystem usage in bytes |
 
 ## Additional metrics (optional, extra cost)
 
 Set `enableAdditionalMetrics = true` to collect extended system and per-process metrics including:
 
-- CPU utilization, logical CPU count
-- Memory utilization and limits
-- Filesystem utilization
-- Per-process CPU, memory, disk I/O, threads, and handles (Windows)
+| Category | Metrics |
+|----------|---------|
+| CPU | `system.cpu.utilization`, `system.cpu.logical.count` |
+| Memory | `system.memory.utilization`, `system.memory.limit` |
+| Disk | `system.disk.io_time`, `system.disk.pending_operations` |
+| Network | `system.network.packets`, `system.network.connections` |
+| Per-process | `process.cpu.time`, `process.cpu.utilization`, `process.memory.usage`, `process.memory.virtual`, `process.memory.utilization`, `process.disk.io`, `process.disk.operations`, `process.threads`, `process.handles`, `process.uptime` |
 
 See the full list in [Microsoft's documentation](https://learn.microsoft.com/en-us/azure/azure-monitor/vm/vminsights-opentelemetry).
 
 ## Prerequisites
 
-- Azure CLI with Bicep support
-- An existing Azure Arc-enabled Windows server
-- Contributor role on the target resource group
+- Azure CLI with Bicep support (`az bicep install`)
+- One or more Azure Arc-enabled Windows servers in the target resource group
+- **Contributor** role on the target resource group
 
 ## Quick start
 
 1. **Clone the repo**
    ```bash
-   git clone https://github.com/<your-username>/arc-vminsights-otel-metrics-at-scale.git
+   git clone https://github.com/SpiffLab/arc-vminsights-otel-metrics-at-scale.git
    cd arc-vminsights-otel-metrics-at-scale
    ```
 
-2. **Edit parameters**
-   ```bash
-   # Update main.bicepparam with your Arc server name
+2. **Edit parameters** — update `main.bicepparam` with your Arc server names:
+   ```bicep
+   param arcServerNames = [
+     'SERVER-01'
+     'SERVER-02'
+     'SERVER-03'
+   ]
    ```
 
 3. **Deploy**
@@ -59,23 +95,32 @@ See the full list in [Microsoft's documentation](https://learn.microsoft.com/en-
      --parameters main.bicepparam
    ```
 
+4. **Verify** — In the Azure portal, navigate to **Azure Arc → Servers → [your server] → Monitoring → Insights** to confirm OTel metrics are flowing.
+
 ## Parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `location` | string | Resource group location | Azure region |
-| `arcServerNames` | string[] | *(required)* | List of Arc-enabled server names |
-| `azureMonitorWorkspaceName` | string | `amw-vminsights-otel` | Monitor workspace name |
-| `dcrName` | string | `MSVMI-otel-<server>` | Data Collection Rule name |
-| `samplingFrequencyInSeconds` | int | `60` | Metric polling interval (10–300s) |
-| `enableAdditionalMetrics` | bool | `false` | Enable extended per-process metrics |
-| `tags` | object | `{}` | Tags for all resources |
+| `location` | string | Resource group location | Azure region for all resources |
+| `arcServerNames` | string[] | *(required)* | List of Arc-enabled server names in the resource group |
+| `azureMonitorWorkspaceName` | string | `amw-vminsights-otel` | Azure Monitor Workspace name |
+| `dcrName` | string | `MSVMI-otel-<resource-group>` | Data Collection Rule name (auto-derived from RG) |
+| `samplingFrequencyInSeconds` | int | `60` | Metric polling interval (10–300 seconds) |
+| `enableAdditionalMetrics` | bool | `false` | Enable extended per-process metrics (extra cost) |
+| `tags` | object | `{}` | Tags applied to all resources |
+
+## Deployment behavior
+
+- **Shared resources** (Azure Monitor Workspace, DCR) are deployed **once** per resource group.
+- **Per-server resources** (AMA extension, DCR association) are deployed in a loop with `@batchSize(5)` for controlled rollout.
+- The template is **idempotent** — re-running it with additional servers in the array will onboard only the new servers.
 
 ## References
 
 - [VM Insights OpenTelemetry — Microsoft Learn](https://learn.microsoft.com/en-us/azure/azure-monitor/vm/vminsights-opentelemetry)
 - [Azure Monitor Agent on Arc-enabled servers](https://learn.microsoft.com/en-us/azure/azure-arc/servers/azure-monitor-agent-deployment)
 - [Data Collection Rules overview](https://learn.microsoft.com/en-us/azure/azure-monitor/data-collection/data-collection-rule-overview)
+- [Comprehensive VM Monitoring with OTel Performance Counters](https://techcommunity.microsoft.com/blog/azureobservabilityblog/comprehensive-vm-monitoring-with-opentelemetry-performance-counters/4470122)
 
 ## License
 
