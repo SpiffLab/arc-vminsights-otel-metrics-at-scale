@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.40.2.10011",
-      "templateHash": "11245845956617663322"
+      "templateHash": "12320115870000852407"
     }
   },
   "parameters": {
@@ -48,6 +48,13 @@
       "maxValue": 300,
       "metadata": {
         "description": "Sampling frequency in seconds for OTel performance counters."
+      }
+    },
+    "deployAmaExtension": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Deploy or update the Azure Monitor Agent extension on each server. Set to false if AMA is already installed to avoid processing conflicts."
       }
     },
     "tags": {
@@ -230,6 +237,7 @@
         "name": "amaExtensions",
         "count": "[length(parameters('arcServerNames'))]"
       },
+      "condition": "[parameters('deployAmaExtension')]",
       "type": "Microsoft.HybridCompute/machines/extensions",
       "apiVersion": "2024-07-10",
       "name": "[format('{0}/{1}', parameters('arcServerNames')[copyIndex()], 'AzureMonitorWindowsAgent')]",
@@ -256,7 +264,6 @@
         "description": "[format('Association of VM Insights OTel DCR with Arc-enabled server {0}', parameters('arcServerNames')[copyIndex()])]"
       },
       "dependsOn": [
-        "[format('amaExtensions[{0}]', copyIndex())]",
         "dataCollectionRule"
       ]
     },

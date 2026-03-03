@@ -28,6 +28,9 @@ param dcrName string = 'MSVMI-otel-${resourceGroup().name}'
 @maxValue(300)
 param samplingFrequencyInSeconds int = 60
 
+@description('Deploy or update the Azure Monitor Agent extension on each server. Set to false if AMA is already installed to avoid processing conflicts.')
+param deployAmaExtension bool = true
+
 @description('Tags to apply to all resources.')
 param tags object = {}
 
@@ -150,7 +153,7 @@ resource arcServers 'Microsoft.HybridCompute/machines@2024-07-10' existing = [
 ]
 
 resource amaExtensions 'Microsoft.HybridCompute/machines/extensions@2024-07-10' = [
-  for (name, i) in arcServerNames: {
+  for (name, i) in arcServerNames: if (deployAmaExtension) {
     parent: arcServers[i]
     name: 'AzureMonitorWindowsAgent'
     location: location
@@ -172,9 +175,6 @@ resource dcrAssociations 'Microsoft.Insights/dataCollectionRuleAssociations@2024
       dataCollectionRuleId: dataCollectionRule.id
       description: 'Association of VM Insights OTel DCR with Arc-enabled server ${name}'
     }
-    dependsOn: [
-      amaExtensions[i]
-    ]
   }
 ]
 
