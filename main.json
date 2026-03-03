@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.40.2.10011",
-      "templateHash": "14401412023907075567"
+      "templateHash": "11245845956617663322"
     }
   },
   "parameters": {
@@ -159,10 +159,7 @@
       "system.disk.io",
       "system.disk.operations",
       "system.disk.operation_time",
-      "system.filesystem.usage",
-      "system.cpu.utilization",
-      "system.memory.utilization",
-      "system.filesystem.utilization"
+      "system.filesystem.usage"
     ]
   },
   "resources": {
@@ -280,7 +277,7 @@
         "rules": [
           {
             "alert": "HighCpuUtilization",
-            "expression": "[format('avg by (host_name) (avg_over_time(system_cpu_utilization[3m])) > {0}', parameters('cpuAlertThreshold'))]",
+            "expression": "[format('(1 - avg by (host_name) (rate(system_cpu_time{{state=\"idle\"}}[3m]))) > {0}', parameters('cpuAlertThreshold'))]",
             "for": "[parameters('cpuAlertDuration')]",
             "severity": "[parameters('cpuAlertSeverity')]",
             "enabled": true,
@@ -320,7 +317,7 @@
         "rules": [
           {
             "alert": "HighMemoryUtilization",
-            "expression": "[format('avg by (host_name) (avg_over_time(system_memory_utilization[5m])) > {0}', parameters('memoryAlertThreshold'))]",
+            "expression": "[format('(sum by (host_name) (avg_over_time(system_memory_usage{{state=\"used\"}}[5m])) / sum by (host_name) (avg_over_time(system_memory_usage[5m]))) > {0}', parameters('memoryAlertThreshold'))]",
             "for": "[parameters('memoryAlertDuration')]",
             "severity": "[parameters('memoryAlertSeverity')]",
             "enabled": true,
@@ -360,7 +357,7 @@
         "rules": [
           {
             "alert": "HighDiskUtilization",
-            "expression": "[format('max by (host_name, mountpoint) (avg_over_time(system_filesystem_utilization[5m])) > {0}', parameters('diskAlertThreshold'))]",
+            "expression": "[format('(sum by (host_name, mountpoint) (avg_over_time(system_filesystem_usage{{state=\"used\"}}[5m])) / sum by (host_name, mountpoint) (avg_over_time(system_filesystem_usage[5m]))) > {0}', parameters('diskAlertThreshold'))]",
             "for": "[parameters('diskAlertDuration')]",
             "severity": "[parameters('diskAlertSeverity')]",
             "enabled": true,

@@ -77,9 +77,8 @@ param diskAlertSeverity int = 1
 
 // ---- Variables ----
 
-// Default + alert metrics are always collected so alerts work out of the box
+// All metrics below are in the default free tier — alert rules derive utilization via PromQL
 var counterSpecifiers = [
-  // Default metrics (free)
   'system.uptime'
   'system.cpu.time'
   'system.memory.usage'
@@ -90,10 +89,6 @@ var counterSpecifiers = [
   'system.disk.operations'
   'system.disk.operation_time'
   'system.filesystem.usage'
-  // Required for alert rules
-  'system.cpu.utilization'
-  'system.memory.utilization'
-  'system.filesystem.utilization'
 ]
 
 // ---- Azure Monitor Workspace ----
@@ -199,7 +194,7 @@ resource cpuAlertRuleGroup 'Microsoft.AlertsManagement/prometheusRuleGroups@2023
     rules: [
       {
         alert: 'HighCpuUtilization'
-        expression: 'avg by (host_name) (avg_over_time(system_cpu_utilization[3m])) > ${cpuAlertThreshold}'
+        expression: '(1 - avg by (host_name) (rate(system_cpu_time{state="idle"}[3m]))) > ${cpuAlertThreshold}'
         for: cpuAlertDuration
         severity: cpuAlertSeverity
         enabled: true
@@ -236,7 +231,7 @@ resource memoryAlertRuleGroup 'Microsoft.AlertsManagement/prometheusRuleGroups@2
     rules: [
       {
         alert: 'HighMemoryUtilization'
-        expression: 'avg by (host_name) (avg_over_time(system_memory_utilization[5m])) > ${memoryAlertThreshold}'
+        expression: '(sum by (host_name) (avg_over_time(system_memory_usage{state="used"}[5m])) / sum by (host_name) (avg_over_time(system_memory_usage[5m]))) > ${memoryAlertThreshold}'
         for: memoryAlertDuration
         severity: memoryAlertSeverity
         enabled: true
@@ -273,7 +268,7 @@ resource diskAlertRuleGroup 'Microsoft.AlertsManagement/prometheusRuleGroups@202
     rules: [
       {
         alert: 'HighDiskUtilization'
-        expression: 'max by (host_name, mountpoint) (avg_over_time(system_filesystem_utilization[5m])) > ${diskAlertThreshold}'
+        expression: '(sum by (host_name, mountpoint) (avg_over_time(system_filesystem_usage{state="used"}[5m])) / sum by (host_name, mountpoint) (avg_over_time(system_filesystem_usage[5m]))) > ${diskAlertThreshold}'
         for: diskAlertDuration
         severity: diskAlertSeverity
         enabled: true

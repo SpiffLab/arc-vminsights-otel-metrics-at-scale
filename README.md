@@ -45,33 +45,30 @@ Alert rules for CPU, memory, and disk utilization are included and enabled by de
 
 ## Metrics collected
 
-The DCR collects default free metrics plus the utilization metrics needed for alerting:
+The DCR collects only default free metrics. Alert rules derive utilization via PromQL:
 
-| Metric | Description | Cost |
-|--------|-------------|------|
-| `system.uptime` | Time since last reboot | Free |
-| `system.cpu.time` | Total CPU time consumed | Free |
-| `system.memory.usage` | Memory in use (bytes) | Free |
-| `system.network.io` | Bytes transmitted/received | Free |
-| `system.network.dropped` | Dropped packets | Free |
-| `system.network.errors` | Network errors | Free |
-| `system.disk.io` | Disk I/O (bytes read/written) | Free |
-| `system.disk.operations` | Disk operations (read/write counts) | Free |
-| `system.disk.operation_time` | Average disk operation time | Free |
-| `system.filesystem.usage` | Filesystem usage in bytes | Free |
-| `system.cpu.utilization` | CPU usage % | Additional |
-| `system.memory.utilization` | Memory usage % | Additional |
-| `system.filesystem.utilization` | Disk usage % | Additional |
+| Metric | Description |
+|--------|-------------|
+| `system.uptime` | Time since last reboot |
+| `system.cpu.time` | Total CPU time consumed |
+| `system.memory.usage` | Memory in use (bytes) |
+| `system.network.io` | Bytes transmitted/received |
+| `system.network.dropped` | Dropped packets |
+| `system.network.errors` | Network errors |
+| `system.disk.io` | Disk I/O (bytes read/written) |
+| `system.disk.operations` | Disk operations (read/write counts) |
+| `system.disk.operation_time` | Average disk operation time |
+| `system.filesystem.usage` | Filesystem usage in bytes |
 
 ## Alert rules
 
 Three Prometheus alert rules are deployed by default:
 
-| Alert | Metric | Default Threshold | Default Duration | Severity |
-|-------|--------|--------------------|------------------|----------|
-| **HighCpuUtilization** | `system_cpu_utilization` | 70% | 3 minutes | Warning (2) |
-| **HighMemoryUtilization** | `system_memory_utilization` | 90% | 5 minutes | Warning (2) |
-| **HighDiskUtilization** | `system_filesystem_utilization` | 90% | 5 minutes | Error (1) |
+| Alert | Derived From | Default Threshold | Default Duration | Severity |
+|-------|--------------|---------------------|------------------|----------|
+| **HighCpuUtilization** | `system_cpu_time` (idle rate) | 70% | 3 minutes | Warning (2) |
+| **HighMemoryUtilization** | `system_memory_usage` (used/total) | 90% | 5 minutes | Warning (2) |
+| **HighDiskUtilization** | `system_filesystem_usage` (used/total) | 90% | 5 minutes | Error (1) |
 
 All alerts:
 - Evaluate **per host** (`host_name` label) so you know which server is affected
