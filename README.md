@@ -149,6 +149,7 @@ az deployment group create \
 | `azureMonitorWorkspaceName` | string | `amw-vminsights-otel` | Azure Monitor Workspace name |
 | `dcrName` | string | `MSVMI-otel-<resource-group>` | Data Collection Rule name (auto-derived from RG) |
 | `samplingFrequencyInSeconds` | int | `60` | Metric polling interval (10–300 seconds) |
+| `deployAmaExtension` | bool | `true` | Deploy/update AMA extension on each server. Set to `false` to skip if AMA is already installed |
 | `enableCpuAlert` | bool | `true` | Enable Prometheus CPU utilization alert rule |
 | `cpuAlertThreshold` | string | `'0.70'` | CPU threshold (0–1 ratio, e.g. 0.70 = 70%) |
 | `cpuAlertDuration` | string | `'PT3M'` | Duration CPU must exceed threshold before firing |
@@ -167,6 +168,7 @@ az deployment group create \
 
 - **Shared resources** (Azure Monitor Workspace, DCR, alert rules) are deployed **once** per resource group.
 - **Per-server resources** (AMA extension, DCR association) are deployed in a loop with `@batchSize(5)` for controlled rollout.
+- **AMA extension** deployment is controlled by `deployAmaExtension`. Set to `false` on re-deploys when AMA is already installed to avoid extension processing conflicts.
 - The template is **idempotent** — re-running it with additional servers in the array will onboard only the new servers.
 
 ## Viewing metrics
@@ -175,7 +177,7 @@ OTel metrics are stored in the **Azure Monitor Workspace**, not on the individua
 
 1. Navigate to **Azure Monitor → Azure Monitor Workspaces → `amw-vminsights-otel`**
 2. Select **Metrics** to open Metrics Explorer with PromQL support
-3. Query metrics like `system_cpu_utilization`, filtering by `host_name`
+3. Query metrics like `system_cpu_time`, `system_memory_usage`, filtering by `host_name`
 
 Alternatively, go to **Azure Arc → Servers → [your server] → Monitoring → Insights** for VM Insights dashboards.
 
@@ -208,6 +210,7 @@ az resource list \
 | Metrics not visible on Arc server blade | OTel metrics go to Azure Monitor Workspace, not the server | Scope to the Azure Monitor Workspace in Metrics Explorer |
 | Alert rules missing in portal | Portal defaults to "Metric" signal type | Change signal type filter to "Prometheus" |
 | Charts stuck loading in VM Insights | Network traffic to `monitor.azure.com` is blocked | Disable ad blockers or allowlist `monitor.azure.com` |
+| AMA extension "still processing" on re-deploy | A previous deployment was cancelled while AMA was installing | Set `deployAmaExtension=false` to skip AMA, or delete the stuck extensions with `az connectedmachine extension delete` and retry |
 
 ## References
 
