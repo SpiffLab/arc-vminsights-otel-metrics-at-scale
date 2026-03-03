@@ -31,6 +31,9 @@ param samplingFrequencyInSeconds int = 60
 @description('Deploy or update the Azure Monitor Agent extension on each server. Set to false if AMA is already installed to avoid processing conflicts.')
 param deployAmaExtension bool = true
 
+@description('Deploy only alert rules against an existing Azure Monitor Workspace. Skips workspace, DCR, AMA, and DCR association deployment.')
+param alertsOnly bool = false
+
 @description('Tags to apply to all resources.')
 param tags object = {}
 
@@ -96,15 +99,21 @@ var counterSpecifiers = [
 
 // ---- Azure Monitor Workspace ----
 
-resource azureMonitorWorkspace 'Microsoft.Monitor/accounts@2023-04-03' = {
+resource azureMonitorWorkspace 'Microsoft.Monitor/accounts@2023-04-03' = if (!alertsOnly) {
   name: azureMonitorWorkspaceName
   location: location
   tags: tags
 }
 
+resource existingAzureMonitorWorkspace 'Microsoft.Monitor/accounts@2023-04-03' existing = if (alertsOnly) {
+  name: azureMonitorWorkspaceName
+}
+
+var azureMonitorWorkspaceId = alertsOnly ? existingAzureMonitorWorkspace.id : azureMonitorWorkspace.id
+
 // ---- Data Collection Rule (OpenTelemetry) ----
 
-resource dataCollectionRule 'Microsoft.Insights/dataCollectionRules@2024-03-11' = {
+resource dataCollectionRule 'Microsoft.Insights/dataCollectionRules@2024-03-11' = if (!alertsOnly) {
   name: dcrName
   location: location
   tags: tags
@@ -125,7 +134,7 @@ resource dataCollectionRule 'Microsoft.Insights/dataCollectionRules@2024-03-11' 
     destinations: {
       monitoringAccounts: [
         {
-          accountResourceId: azureMonitorWorkspace.id
+          accountResourceId: azureMonitorWorkspaceId
           name: 'MonitoringAccountDestination'
         }
       ]
@@ -147,13 +156,13 @@ resource dataCollectionRule 'Microsoft.Insights/dataCollectionRules@2024-03-11' 
 
 @batchSize(5)
 resource arcServers 'Microsoft.HybridCompute/machines@2024-07-10' existing = [
-  for name in arcServerNames: {
+  for name in arcServerNames: if (!alertsOnly) {
     name: name
   }
 ]
 
 resource amaExtensions 'Microsoft.HybridCompute/machines/extensions@2024-07-10' = [
-  for (name, i) in arcServerNames: if (deployAmaExtension) {
+  for (name, i) in arcServerNames: if (!alertsOnly && deployAmaExtension) {
     parent: arcServers[i]
     name: 'AzureMonitorWindowsAgent'
     location: location
@@ -168,7 +177,7 @@ resource amaExtensions 'Microsoft.HybridCompute/machines/extensions@2024-07-10' 
 ]
 
 resource dcrAssociations 'Microsoft.Insights/dataCollectionRuleAssociations@2024-03-11' = [
-  for (name, i) in arcServerNames: {
+  for (name, i) in arcServerNames: if (!alertsOnly) {
     name: 'VMInsightsOTelAssociation'
     scope: arcServers[i]
     properties: {
@@ -189,7 +198,7 @@ resource cpuAlertRuleGroup 'Microsoft.AlertsManagement/prometheusRuleGroups@2023
     enabled: true
     interval: 'PT1M'
     scopes: [
-      azureMonitorWorkspace.id
+      azureMonitorWorkspaceId
     ]
     rules: [
       {
@@ -226,7 +235,7 @@ resource memoryAlertRuleGroup 'Microsoft.AlertsManagement/prometheusRuleGroups@2
     enabled: true
     interval: 'PT1M'
     scopes: [
-      azureMonitorWorkspace.id
+      azureMonitorWorkspaceId
     ]
     rules: [
       {
@@ -263,7 +272,7 @@ resource diskAlertRuleGroup 'Microsoft.AlertsManagement/prometheusRuleGroups@202
     enabled: true
     interval: 'PT1M'
     scopes: [
-      azureMonitorWorkspace.id
+      azureMonitorWorkspaceId
     ]
     rules: [
       {
@@ -292,10 +301,10 @@ resource diskAlertRuleGroup 'Microsoft.AlertsManagement/prometheusRuleGroups@202
 // ---- Outputs ----
 
 @description('Resource ID of the Azure Monitor Workspace.')
-output azureMonitorWorkspaceId string = azureMonitorWorkspace.id
+output azureMonitorWorkspaceId string = azureMonitorWorkspaceId
 
 @description('Resource ID of the Data Collection Rule.')
-output dataCollectionRuleId string = dataCollectionRule.id
+output dataCollectionRuleId string = alertsOnly ? '' : dataCollectionRule.id
 
 @description('Names of Arc servers configured.')
 output configuredServers array = arcServerNames

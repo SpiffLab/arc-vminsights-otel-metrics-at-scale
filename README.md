@@ -150,6 +150,7 @@ az deployment group create \
 | `dcrName` | string | `MSVMI-otel-<resource-group>` | Data Collection Rule name (auto-derived from RG) |
 | `samplingFrequencyInSeconds` | int | `60` | Metric polling interval (10–300 seconds) |
 | `deployAmaExtension` | bool | `true` | Deploy/update AMA extension on each server. Set to `false` to skip if AMA is already installed |
+| `alertsOnly` | bool | `false` | Deploy only alert rules against an existing Azure Monitor Workspace. Skips workspace, DCR, AMA, and DCR associations |
 | `enableCpuAlert` | bool | `true` | Enable Prometheus CPU utilization alert rule |
 | `cpuAlertThreshold` | string | `'0.70'` | CPU threshold (0–1 ratio, e.g. 0.70 = 70%) |
 | `cpuAlertDuration` | string | `'PT3M'` | Duration CPU must exceed threshold before firing |
@@ -169,6 +170,7 @@ az deployment group create \
 - **Shared resources** (Azure Monitor Workspace, DCR, alert rules) are deployed **once** per resource group.
 - **Per-server resources** (AMA extension, DCR association) are deployed in a loop with `@batchSize(5)` for controlled rollout.
 - **AMA extension** deployment is controlled by `deployAmaExtension`. Set to `false` on re-deploys when AMA is already installed to avoid extension processing conflicts.
+- **Alerts-only mode** (`alertsOnly=true`) deploys only the Prometheus alert rules against an existing Azure Monitor Workspace, skipping all infrastructure and per-server resources.
 - The template is **idempotent** — re-running it with additional servers in the array will onboard only the new servers.
 
 ## Viewing metrics

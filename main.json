@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.40.2.10011",
-      "templateHash": "12320115870000852407"
+      "templateHash": "2299599040705242486"
     }
   },
   "parameters": {
@@ -55,6 +55,13 @@
       "defaultValue": true,
       "metadata": {
         "description": "Deploy or update the Azure Monitor Agent extension on each server. Set to false if AMA is already installed to avoid processing conflicts."
+      }
+    },
+    "alertsOnly": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Deploy only alert rules against an existing Azure Monitor Workspace. Skips workspace, DCR, AMA, and DCR association deployment."
       }
     },
     "tags": {
@@ -167,17 +174,27 @@
       "system.disk.operations",
       "system.disk.operation_time",
       "system.filesystem.usage"
-    ]
+    ],
+    "azureMonitorWorkspaceId": "[if(parameters('alertsOnly'), resourceId('Microsoft.Monitor/accounts', parameters('azureMonitorWorkspaceName')), resourceId('Microsoft.Monitor/accounts', parameters('azureMonitorWorkspaceName')))]"
   },
   "resources": {
     "azureMonitorWorkspace": {
+      "condition": "[not(parameters('alertsOnly'))]",
       "type": "Microsoft.Monitor/accounts",
       "apiVersion": "2023-04-03",
       "name": "[parameters('azureMonitorWorkspaceName')]",
       "location": "[parameters('location')]",
       "tags": "[parameters('tags')]"
     },
+    "existingAzureMonitorWorkspace": {
+      "condition": "[parameters('alertsOnly')]",
+      "existing": true,
+      "type": "Microsoft.Monitor/accounts",
+      "apiVersion": "2023-04-03",
+      "name": "[parameters('azureMonitorWorkspaceName')]"
+    },
     "dataCollectionRule": {
+      "condition": "[not(parameters('alertsOnly'))]",
       "type": "Microsoft.Insights/dataCollectionRules",
       "apiVersion": "2024-03-11",
       "name": "[parameters('dcrName')]",
@@ -200,7 +217,7 @@
         "destinations": {
           "monitoringAccounts": [
             {
-              "accountResourceId": "[resourceId('Microsoft.Monitor/accounts', parameters('azureMonitorWorkspaceName'))]",
+              "accountResourceId": "[variables('azureMonitorWorkspaceId')]",
               "name": "MonitoringAccountDestination"
             }
           ]
@@ -227,6 +244,7 @@
         "mode": "serial",
         "batchSize": 5
       },
+      "condition": "[not(parameters('alertsOnly'))]",
       "existing": true,
       "type": "Microsoft.HybridCompute/machines",
       "apiVersion": "2024-07-10",
@@ -237,7 +255,7 @@
         "name": "amaExtensions",
         "count": "[length(parameters('arcServerNames'))]"
       },
-      "condition": "[parameters('deployAmaExtension')]",
+      "condition": "[and(not(parameters('alertsOnly')), parameters('deployAmaExtension'))]",
       "type": "Microsoft.HybridCompute/machines/extensions",
       "apiVersion": "2024-07-10",
       "name": "[format('{0}/{1}', parameters('arcServerNames')[copyIndex()], 'AzureMonitorWindowsAgent')]",
@@ -255,6 +273,7 @@
         "name": "dcrAssociations",
         "count": "[length(parameters('arcServerNames'))]"
       },
+      "condition": "[not(parameters('alertsOnly'))]",
       "type": "Microsoft.Insights/dataCollectionRuleAssociations",
       "apiVersion": "2024-03-11",
       "scope": "[resourceId('Microsoft.HybridCompute/machines', parameters('arcServerNames')[copyIndex()])]",
@@ -279,7 +298,7 @@
         "enabled": true,
         "interval": "PT1M",
         "scopes": [
-          "[resourceId('Microsoft.Monitor/accounts', parameters('azureMonitorWorkspaceName'))]"
+          "[variables('azureMonitorWorkspaceId')]"
         ],
         "rules": [
           {
@@ -319,7 +338,7 @@
         "enabled": true,
         "interval": "PT1M",
         "scopes": [
-          "[resourceId('Microsoft.Monitor/accounts', parameters('azureMonitorWorkspaceName'))]"
+          "[variables('azureMonitorWorkspaceId')]"
         ],
         "rules": [
           {
@@ -359,7 +378,7 @@
         "enabled": true,
         "interval": "PT1M",
         "scopes": [
-          "[resourceId('Microsoft.Monitor/accounts', parameters('azureMonitorWorkspaceName'))]"
+          "[variables('azureMonitorWorkspaceId')]"
         ],
         "rules": [
           {
@@ -394,14 +413,14 @@
       "metadata": {
         "description": "Resource ID of the Azure Monitor Workspace."
       },
-      "value": "[resourceId('Microsoft.Monitor/accounts', parameters('azureMonitorWorkspaceName'))]"
+      "value": "[variables('azureMonitorWorkspaceId')]"
     },
     "dataCollectionRuleId": {
       "type": "string",
       "metadata": {
         "description": "Resource ID of the Data Collection Rule."
       },
-      "value": "[resourceId('Microsoft.Insights/dataCollectionRules', parameters('dcrName'))]"
+      "value": "[if(parameters('alertsOnly'), '', resourceId('Microsoft.Insights/dataCollectionRules', parameters('dcrName')))]"
     },
     "configuredServers": {
       "type": "array",
